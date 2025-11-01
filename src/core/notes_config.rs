@@ -10,6 +10,9 @@ pub struct NotesConfig {
     pub order: HashMap<String, usize>,
     /// Carpetas que están expandidas
     pub expanded_folders: Vec<String>,
+    /// Preferencia de idioma (código ISO 639-1: "es", "en", etc.)
+    #[serde(default)]
+    pub language: Option<String>,
 }
 
 impl Default for NotesConfig {
@@ -24,6 +27,7 @@ impl NotesConfig {
         Self {
             order: HashMap::new(),
             expanded_folders: Vec::new(),
+            language: None,
         }
     }
     
@@ -103,6 +107,16 @@ impl NotesConfig {
         } else {
             self.expanded_folders.push(folder);
         }
+    }
+    
+    /// Obtiene la preferencia de idioma
+    pub fn get_language(&self) -> Option<&str> {
+        self.language.as_deref()
+    }
+    
+    /// Establece la preferencia de idioma
+    pub fn set_language(&mut self, lang: Option<String>) {
+        self.language = lang;
     }
     
     /// Ruta por defecto del archivo de configuración

@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::core::{CommandParser, EditorAction, EditorMode, KeyModifiers, NoteBuffer, NotesDirectory, NoteFile, MarkdownParser, StyleType, NotesConfig, NotesDatabase, extract_tags, extract_all_tags, extract_inline_tags};
+use crate::i18n::{I18n, Language};
 use gtk::{gdk, CssProvider, style_context_add_provider_for_display, STYLE_PROVIDER_PRIORITY_APPLICATION};
 
 #[derive(Debug, Clone)]
@@ -61,6 +62,7 @@ pub struct MainApp {
     window_title: gtk::Label,
     notes_dir: NotesDirectory,
     notes_db: NotesDatabase,
+    notes_config: NotesConfig,
     current_note: Option<NoteFile>,
     has_unsaved_changes: bool,
     markdown_enabled: bool,
@@ -89,6 +91,12 @@ pub struct MainApp {
     search_entry: gtk::SearchEntry,
     search_toggle_button: gtk::ToggleButton,
     search_active: bool,
+    i18n: Rc<RefCell<I18n>>,
+    // Widgets para actualización dinámica de idioma
+    sidebar_toggle_button: gtk::Button,
+    sidebar_notes_label: gtk::Label,
+    new_note_button: gtk::Button,
+    settings_button: gtk::MenuButton,
 }
 
 #[derive(Debug)]
@@ -128,6 +136,7 @@ pub enum AppMsg {
     ShowPreferences,
     ShowKeyboardShortcuts,
     ShowAboutDialog,
+    ChangeLanguage(Language),
 }
 
 #[component(pub)]
@@ -150,7 +159,7 @@ impl SimpleComponent for MainApp {
                 set_spacing: 0,
 
                 append = header_bar = &gtk::HeaderBar {
-                    pack_start = &gtk::Button {
+                    pack_start = sidebar_toggle_button = &gtk::Button {
                         set_icon_name: "view-list-symbolic",
                         set_tooltip_text: Some("Mostrar/ocultar lista de notas"),
                         add_css_class: "flat",
@@ -182,7 +191,7 @@ impl SimpleComponent for MainApp {
                             set_spacing: 8,
                             set_margin_all: 12,
                             
-                            append = &gtk::Label {
+                            append = sidebar_notes_label = &gtk::Label {
                                 set_label: "Notas",
                                 set_xalign: 0.0,
                                 set_hexpand: true,
@@ -199,7 +208,7 @@ impl SimpleComponent for MainApp {
                                 },
                             },
                             
-                            append = &gtk::Button {
+                            append = new_note_button = &gtk::Button {
                                 set_icon_name: "list-add-symbolic",
                                 set_tooltip_text: Some("Nueva nota"),
                                 add_css_class: "flat",
@@ -354,40 +363,7 @@ impl SimpleComponent for MainApp {
                                     set_tooltip_text: Some("Ajustes"),
                                     add_css_class: "flat",
                                     set_direction: gtk::ArrowType::Up,
-                                    
-                                    #[wrap(Some)]
-                                    set_popover = &gtk::Popover {
-                                        add_css_class: "menu",
-                                        
-                                        #[wrap(Some)]
-                                        set_child = &gtk::Box {
-                                            set_orientation: gtk::Orientation::Vertical,
-                                            set_spacing: 0,
-                                            
-                                            append = &gtk::Button {
-                                                set_label: "Preferencias",
-                                                add_css_class: "flat",
-                                                set_halign: gtk::Align::Fill,
-                                                connect_clicked => AppMsg::ShowPreferences,
-                                            },
-                                            
-                                            append = &gtk::Button {
-                                                set_label: "Atajos de teclado",
-                                                add_css_class: "flat",
-                                                set_halign: gtk::Align::Fill,
-                                                connect_clicked => AppMsg::ShowKeyboardShortcuts,
-                                            },
-                                            
-                            append = &gtk::Separator {
-                                set_orientation: gtk::Orientation::Horizontal,
-                            },                                            append = &gtk::Button {
-                                                set_label: "Acerca de",
-                                                add_css_class: "flat",
-                                                set_halign: gtk::Align::Fill,
-                                                connect_clicked => AppMsg::ShowAboutDialog,
-                                            },
-                                        },
-                                    },
+                                    // El popover se creará dinámicamente después
                                 },
                             },
                         },
@@ -414,6 +390,23 @@ impl SimpleComponent for MainApp {
         let db_path = notes_dir.db_path();
         let notes_db = NotesDatabase::new(&db_path)
             .expect("No se pudo crear la base de datos");
+        
+        // Cargar configuración
+        let config_path = NotesConfig::default_path();
+        let notes_config = NotesConfig::load(&config_path).unwrap_or_else(|_| {
+            println!("No se pudo cargar configuración, creando una nueva");
+            NotesConfig::new()
+        });
+        
+        // Determinar idioma: usar configuración guardada o detectar del sistema
+        let language = if let Some(lang_code) = notes_config.get_language() {
+            Language::from_code(lang_code)
+        } else {
+            Language::from_env()
+        };
+        
+        let i18n = Rc::new(RefCell::new(I18n::new(language)));
+        println!("Idioma detectado: {:?}", language);
         
         // Indexar todas las notas existentes
         println!("Indexando notas existentes...");
@@ -444,11 +437,8 @@ impl SimpleComponent for MainApp {
         }
         
         // Crear menú contextual para el sidebar (sin parent inicialmente)
-        let menu = gtk::gio::Menu::new();
-        menu.append(Some("Renombrar"), Some("item.rename"));
-        menu.append(Some("Eliminar"), Some("item.delete"));
-        
-        let context_menu = gtk::PopoverMenu::from_model(Some(&menu));
+        // Se creará dinámicamente con las traducciones cuando se necesite
+        let context_menu = gtk::PopoverMenu::from_model(None::<&gtk::gio::Menu>);
         context_menu.set_has_arrow(false);
         context_menu.add_css_class("context-menu");
         
@@ -521,6 +511,7 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
             window_title: widgets.window_title.clone(),
             notes_dir,
             notes_db,
+            notes_config,
             current_note,
             has_unsaved_changes: false,
             markdown_enabled: true, // Ahora con parser robusto usando offsets de pulldown-cmark
@@ -549,6 +540,11 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
             search_entry: widgets.search_entry.clone(),
             search_toggle_button: widgets.search_toggle_button.clone(),
             search_active: false,
+            i18n,
+            sidebar_toggle_button: widgets.sidebar_toggle_button.clone(),
+            sidebar_notes_label: widgets.sidebar_notes_label.clone(),
+            new_note_button: widgets.new_note_button.clone(),
+            settings_button: widgets.settings_button.clone(),
         };
 
         // Crear acciones para el menú contextual
@@ -579,6 +575,12 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
         
         // Crear tags de estilo para markdown
         model.create_text_tags();
+        
+        // Crear popover del settings button con textos traducidos
+        model.create_settings_popover(&sender);
+        
+        // Aplicar traducciones iniciales a todos los widgets
+        model.apply_initial_translations();
         
         // Sincronizar contenido inicial con la vista
         model.sync_to_view();
@@ -1543,6 +1545,13 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
                 *self.context_item_name.borrow_mut() = item_name;
                 *self.context_is_folder.borrow_mut() = is_folder;
                 
+                // Recrear el menú con las traducciones actuales
+                let i18n = self.i18n.borrow();
+                let menu = gtk::gio::Menu::new();
+                menu.append(Some(&i18n.t("rename")), Some("item.rename"));
+                menu.append(Some(&i18n.t("delete")), Some("item.delete"));
+                self.context_menu.set_menu_model(Some(&menu));
+                
                 // Establecer parent solo cuando se va a mostrar
                 self.context_menu.set_parent(&self.notes_list);
                 
@@ -1815,7 +1824,7 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
             }
             
             AppMsg::ShowPreferences => {
-                self.show_preferences_dialog();
+                self.show_preferences_dialog(&sender);
             }
             
             AppMsg::ShowKeyboardShortcuts => {
@@ -1824,6 +1833,22 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
             
             AppMsg::ShowAboutDialog => {
                 self.show_about_dialog();
+            }
+            
+            AppMsg::ChangeLanguage(new_language) => {
+                // Actualizar idioma en I18n
+                self.i18n.borrow_mut().set_language(new_language);
+                
+                // Guardar preferencia en configuración
+                self.notes_config.set_language(Some(new_language.code().to_string()));
+                if let Err(e) = self.notes_config.save(NotesConfig::default_path()) {
+                    eprintln!("Error guardando configuración de idioma: {}", e);
+                }
+                
+                println!("Idioma cambiado a: {:?}", new_language);
+                
+                // Actualizar todos los textos de la UI
+                self.update_ui_language(&sender);
             }
         }
     }
@@ -2829,6 +2854,7 @@ impl MainApp {
     }
     
     fn update_status_bar(&self, _sender: &ComponentSender<Self>) {
+        let i18n = self.i18n.borrow();
         let line_count = self.buffer.len_lines();
         let word_count = self.buffer.to_string().split_whitespace().count();
         let current_mode = *self.mode.borrow();
@@ -2844,7 +2870,14 @@ impl MainApp {
         
         // Actualizar estadísticas con indicador de cambios sin guardar
         let unsaved_indicator = if self.has_unsaved_changes { " •" } else { "" };
-        self.stats_label.set_label(&format!("{} líneas | {} palabras{}", line_count, word_count, unsaved_indicator));
+        self.stats_label.set_label(&format!(
+            "{} {} | {} {}{}",
+            line_count,
+            i18n.t("lines"),
+            word_count,
+            i18n.t("words"),
+            unsaved_indicator
+        ));
         
         // Actualizar título de ventana con nombre de nota, carpeta e indicador de cambios
         let title = if let Some(note) = &self.current_note {
@@ -2862,11 +2895,11 @@ impl MainApp {
             
             format!("{}{}{}", modified_marker, folder_info, note.name())
         } else {
-            "Sin título".to_string()
+            i18n.t("untitled")
         };
         self.window_title.set_text(&title);
         
-        println!("Modo: {:?} | {} líneas | {} palabras", current_mode, line_count, word_count);
+        println!("Modo: {:?} | {} {} | {} {}", current_mode, line_count, i18n.t("lines"), word_count, i18n.t("words"));
         
         // Actualizar tags se hace en RefreshTags para tener acceso al sender
     }
@@ -3661,6 +3694,8 @@ impl MainApp {
     
     /// Muestra un diálogo modal centrado para crear una nueva nota
     fn show_create_note_dialog(&self, sender: &ComponentSender<Self>) {
+        let i18n = self.i18n.borrow();
+        
         // Crear ventana de diálogo centrada y compacta
         let dialog = gtk::Window::builder()
             .transient_for(&self.main_window)
@@ -3679,7 +3714,7 @@ impl MainApp {
         // Header con título
         let header = gtk::HeaderBar::builder()
             .title_widget(&gtk::Label::builder()
-                .label("Nueva nota")
+                .label(&i18n.t("create_note_title"))
                 .build())
             .build();
         
@@ -3696,7 +3731,7 @@ impl MainApp {
             .build();
         
         let entry = gtk::Entry::builder()
-            .placeholder_text("ejemplo: proyectos/nueva-idea")
+            .placeholder_text(&i18n.t("note_name_hint"))
             .build();
         
         // Crear popover de autocompletado
@@ -3734,7 +3769,7 @@ impl MainApp {
         folders.sort();
         
         let hint_label = gtk::Label::builder()
-            .label("<small>Usa '/' para crear en carpetas</small>")
+            .label(&format!("<small>{}</small>", i18n.t("create_folder_hint")))
             .use_markup(true)
             .xalign(0.0)
             .build();
@@ -3749,11 +3784,11 @@ impl MainApp {
             .build();
         
         let cancel_button = gtk::Button::builder()
-            .label("Cancelar")
+            .label(&i18n.t("cancel"))
             .build();
         
         let create_button = gtk::Button::builder()
-            .label("Crear")
+            .label(&i18n.t("create"))
             .build();
         create_button.add_css_class("suggested-action");
         
@@ -3967,13 +4002,15 @@ impl MainApp {
         );
     }
     
-    fn show_preferences_dialog(&self) {
+    fn show_preferences_dialog(&self, sender: &ComponentSender<Self>) {
+        let i18n = self.i18n.borrow();
+        
         let dialog = gtk::Window::builder()
             .transient_for(&self.main_window)
             .modal(true)
-            .title("Preferencias")
+            .title(&i18n.t("preferences"))
             .default_width(500)
-            .default_height(400)
+            .default_height(450)
             .build();
         
         let content_box = gtk::Box::builder()
@@ -3987,11 +4024,58 @@ impl MainApp {
         
         // Título
         let title = gtk::Label::builder()
-            .label("Preferencias")
+            .label(&i18n.t("preferences"))
             .halign(gtk::Align::Start)
             .build();
         title.add_css_class("title-2");
         content_box.append(&title);
+        
+        // Sección de Idioma
+        let language_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(8)
+            .build();
+        
+        let language_label = gtk::Label::builder()
+            .label(&i18n.t("language"))
+            .halign(gtk::Align::Start)
+            .build();
+        language_label.add_css_class("heading");
+        language_box.append(&language_label);
+        
+        let language_description = gtk::Label::builder()
+            .label(&i18n.t("language_description"))
+            .halign(gtk::Align::Start)
+            .wrap(true)
+            .build();
+        language_description.add_css_class("dim-label");
+        language_box.append(&language_description);
+        
+        // Dropdown de idioma
+        let language_dropdown = gtk::DropDown::from_strings(&["Español", "English"]);
+        let current_lang = i18n.current_language();
+        language_dropdown.set_selected(match current_lang {
+            Language::Spanish => 0,
+            Language::English => 1,
+        });
+        
+        language_dropdown.connect_selected_notify(gtk::glib::clone!(
+            #[strong] sender,
+            move |dropdown| {
+                let selected = dropdown.selected();
+                let new_language = match selected {
+                    0 => Language::Spanish,
+                    1 => Language::English,
+                    _ => Language::Spanish,
+                };
+                sender.input(AppMsg::ChangeLanguage(new_language));
+            }
+        ));
+        
+        language_box.append(&language_dropdown);
+        content_box.append(&language_box);
+        
+        content_box.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
         
         // Sección de Tema
         let theme_box = gtk::Box::builder()
@@ -4000,14 +4084,14 @@ impl MainApp {
             .build();
         
         let theme_label = gtk::Label::builder()
-            .label("Tema")
+            .label(&i18n.t("theme"))
             .halign(gtk::Align::Start)
             .build();
         theme_label.add_css_class("heading");
         theme_box.append(&theme_label);
         
         let theme_description = gtk::Label::builder()
-            .label("La aplicación sincroniza automáticamente con el tema Omarchy")
+            .label(&i18n.t("theme_sync"))
             .halign(gtk::Align::Start)
             .wrap(true)
             .build();
@@ -4016,6 +4100,8 @@ impl MainApp {
         
         content_box.append(&theme_box);
         
+        content_box.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+        
         // Sección de Markdown
         let markdown_box = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
@@ -4023,7 +4109,7 @@ impl MainApp {
             .build();
         
         let markdown_label = gtk::Label::builder()
-            .label("Renderizado Markdown")
+            .label(&i18n.t("markdown_rendering"))
             .halign(gtk::Align::Start)
             .build();
         markdown_label.add_css_class("heading");
@@ -4035,7 +4121,7 @@ impl MainApp {
             .build();
         
         let markdown_desc = gtk::Label::builder()
-            .label("Activado por defecto en modo Normal")
+            .label(&i18n.t("markdown_enabled"))
             .halign(gtk::Align::Start)
             .hexpand(true)
             .build();
@@ -4055,7 +4141,7 @@ impl MainApp {
             .build();
         
         let close_button = gtk::Button::builder()
-            .label("Cerrar")
+            .label(&i18n.t("close"))
             .build();
         close_button.add_css_class("suggested-action");
         
@@ -4086,10 +4172,12 @@ impl MainApp {
     }
     
     fn show_keyboard_shortcuts(&self) {
+        let i18n = self.i18n.borrow();
+        
         let dialog = gtk::Window::builder()
             .transient_for(&self.main_window)
             .modal(true)
-            .title("Atajos de teclado")
+            .title(&i18n.t("keyboard_shortcuts"))
             .default_width(600)
             .default_height(500)
             .build();
@@ -4109,7 +4197,7 @@ impl MainApp {
         
         // Título
         let title = gtk::Label::builder()
-            .label("Atajos de teclado")
+            .label(&i18n.t("keyboard_shortcuts"))
             .halign(gtk::Align::Start)
             .build();
         title.add_css_class("title-2");
@@ -4241,18 +4329,219 @@ impl MainApp {
     }
     
     fn show_about_dialog(&self) {
+        let i18n = self.i18n.borrow();
+        
         let dialog = gtk::AboutDialog::builder()
             .transient_for(&self.main_window)
             .modal(true)
             .program_name("NotNative")
             .version("0.1.0")
-            .comments("Editor de notas markdown con estilo vim")
+            .comments(&i18n.t("app_description"))
             .website("https://github.com/k4ditano/notnative-app")
-            .website_label("GitHub")
+            .website_label(&i18n.t("website"))
             .license_type(gtk::License::MitX11)
             .authors(vec!["k4ditano".to_string()])
             .build();
         
         dialog.present();
+    }
+    
+    fn update_ui_language(&self, sender: &ComponentSender<Self>) {
+        let i18n = self.i18n.borrow();
+        
+        // Actualizar tooltips
+        self.sidebar_toggle_button.set_tooltip_text(Some(&i18n.t("show_hide_notes")));
+        self.search_toggle_button.set_tooltip_text(Some(&i18n.t("search_notes")));
+        self.new_note_button.set_tooltip_text(Some(&i18n.t("new_note")));
+        self.settings_button.set_tooltip_text(Some(&i18n.t("settings")));
+        self.tags_menu_button.set_tooltip_text(Some(&i18n.t("tags_note")));
+        
+        // Actualizar labels del sidebar
+        self.sidebar_notes_label.set_label(&i18n.t("notes"));
+        
+        // Actualizar placeholder del search entry
+        self.search_entry.set_placeholder_text(Some(&i18n.t("search_placeholder")));
+        
+        // Actualizar título de ventana si no hay nota cargada
+        if self.current_note.is_none() {
+            self.window_title.set_text(&i18n.t("app_title"));
+        }
+        
+        // Actualizar barra de estado (el modo y las estadísticas usan el idioma actual)
+        let line_count = self.buffer.len_lines();
+        let word_count = self.buffer.to_string().split_whitespace().count();
+        let unsaved_indicator = if self.has_unsaved_changes { " •" } else { "" };
+        
+        self.stats_label.set_label(&format!(
+            "{} {} | {} {}{}",
+            line_count,
+            i18n.t("lines"),
+            word_count,
+            i18n.t("words"),
+            unsaved_indicator
+        ));
+        
+        // Recrear el popover del settings button con textos actualizados
+        self.recreate_settings_popover(sender);
+        
+        // Actualizar menú contextual
+        self.update_context_menu_labels();
+        
+        // Actualizar display de tags
+        self.refresh_tags_display_after_language_change();
+        
+        println!("UI actualizada al idioma: {:?}", i18n.current_language());
+    }
+    
+    fn create_settings_popover(&self, sender: &ComponentSender<Self>) {
+        let i18n = self.i18n.borrow();
+        
+        // Crear el box que contendrá los botones
+        let menu_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(0)
+            .build();
+        
+        // Botón de Preferencias
+        let preferences_button = gtk::Button::builder()
+            .label(&i18n.t("preferences"))
+            .halign(gtk::Align::Fill)
+            .build();
+        preferences_button.add_css_class("flat");
+        preferences_button.connect_clicked(gtk::glib::clone!(
+            #[strong] sender,
+            move |_| {
+                sender.input(AppMsg::ShowPreferences);
+            }
+        ));
+        
+        // Botón de Atajos de teclado
+        let shortcuts_button = gtk::Button::builder()
+            .label(&i18n.t("keyboard_shortcuts"))
+            .halign(gtk::Align::Fill)
+            .build();
+        shortcuts_button.add_css_class("flat");
+        shortcuts_button.connect_clicked(gtk::glib::clone!(
+            #[strong] sender,
+            move |_| {
+                sender.input(AppMsg::ShowKeyboardShortcuts);
+            }
+        ));
+        
+        // Botón de Acerca de
+        let about_button = gtk::Button::builder()
+            .label(&i18n.t("about"))
+            .halign(gtk::Align::Fill)
+            .build();
+        about_button.add_css_class("flat");
+        about_button.connect_clicked(gtk::glib::clone!(
+            #[strong] sender,
+            move |_| {
+                sender.input(AppMsg::ShowAboutDialog);
+            }
+        ));
+        
+        // Agregar botones al box
+        menu_box.append(&preferences_button);
+        menu_box.append(&shortcuts_button);
+        menu_box.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+        menu_box.append(&about_button);
+        
+        // Crear el popover
+        let popover = gtk::Popover::builder()
+            .child(&menu_box)
+            .build();
+        popover.add_css_class("menu");
+        
+        // Asignar el popover al MenuButton
+        self.settings_button.set_popover(Some(&popover));
+    }
+    
+    fn recreate_settings_popover(&self, sender: &ComponentSender<Self>) {
+        // Recrear el popover con los textos actualizados
+        self.create_settings_popover(sender);
+    }
+    
+    fn update_context_menu_labels(&self) {
+        // El menú contextual se recrea cada vez que se muestra en ShowContextMenu
+        // con las traducciones actuales, no necesitamos hacer nada aquí
+    }
+    
+    fn refresh_tags_display_after_language_change(&self) {
+        let i18n = self.i18n.borrow();
+        
+        // Limpiar la lista de tags
+        while let Some(child) = self.tags_list_box.first_child() {
+            self.tags_list_box.remove(&child);
+        }
+        
+        // Si hay una nota cargada, volver a extraer y mostrar sus tags
+        if let Some(ref note) = self.current_note {
+            if let Ok(content) = note.read() {
+                let tags = extract_all_tags(&content);
+                
+                if tags.is_empty() {
+                    let no_tags_label = gtk::Label::builder()
+                        .label(&i18n.t("no_tags"))
+                        .halign(gtk::Align::Start)
+                        .build();
+                    no_tags_label.add_css_class("dim-label");
+                    
+                    let row = gtk::ListBoxRow::new();
+                    row.set_child(Some(&no_tags_label));
+                    row.set_selectable(false);
+                    row.set_activatable(false);
+                    self.tags_list_box.append(&row);
+                } else {
+                    for tag in tags {
+                        let tag_box = gtk::Box::builder()
+                            .orientation(gtk::Orientation::Horizontal)
+                            .spacing(8)
+                            .build();
+                        
+                        let tag_label = gtk::Label::builder()
+                            .label(&format!("#{}", tag))
+                            .halign(gtk::Align::Start)
+                            .hexpand(true)
+                            .build();
+                        
+                        let remove_button = gtk::Button::builder()
+                            .icon_name("user-trash-symbolic")
+                            .tooltip_text(&i18n.t("remove_tag"))
+                            .valign(gtk::Align::Center)
+                            .build();
+                        remove_button.add_css_class("flat");
+                        remove_button.add_css_class("circular");
+                        
+                        tag_box.append(&tag_label);
+                        tag_box.append(&remove_button);
+                        
+                        let row = gtk::ListBoxRow::new();
+                        row.set_child(Some(&tag_box));
+                        row.set_selectable(false);
+                        row.set_activatable(false);
+                        
+                        self.tags_list_box.append(&row);
+                    }
+                }
+            }
+        }
+    }
+    
+    fn apply_initial_translations(&self) {
+        let i18n = self.i18n.borrow();
+        
+        // Actualizar todos los tooltips con el idioma inicial
+        self.sidebar_toggle_button.set_tooltip_text(Some(&i18n.t("show_hide_notes")));
+        self.search_toggle_button.set_tooltip_text(Some(&i18n.t("search_notes")));
+        self.new_note_button.set_tooltip_text(Some(&i18n.t("new_note")));
+        self.settings_button.set_tooltip_text(Some(&i18n.t("settings")));
+        self.tags_menu_button.set_tooltip_text(Some(&i18n.t("tags_note")));
+        
+        // Actualizar labels
+        self.sidebar_notes_label.set_label(&i18n.t("notes"));
+        
+        // Actualizar placeholders
+        self.search_entry.set_placeholder_text(Some(&i18n.t("search_placeholder")));
     }
 }
