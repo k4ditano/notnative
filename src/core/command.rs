@@ -39,6 +39,7 @@ pub enum EditorAction {
     
     /// Sidebar
     OpenSidebar,
+    CloseSidebar,
     
     /// Crear nueva nota
     CreateNote,
@@ -113,10 +114,10 @@ impl CommandParser {
             
             "u" => EditorAction::Undo,
             
-            // Escapar secuencias pendientes
+            // ESC en modo Normal: cerrar sidebar si está abierto
             "Escape" => {
                 self.pending.clear();
-                EditorAction::None
+                EditorAction::CloseSidebar
             }
             
             _ => {

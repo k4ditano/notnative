@@ -5,6 +5,13 @@ use std::rc::Rc;
 
 use crate::core::{CommandParser, EditorAction, EditorMode, KeyModifiers, NoteBuffer, NotesDirectory, NoteFile, MarkdownParser, StyleType, NotesConfig};
 
+#[derive(Debug, Clone)]
+struct LinkSpan {
+    start: i32,
+    end: i32,
+    url: String,
+}
+
 /// Shared user-facing application identifier used by GTK.
 pub const APP_ID: &str = "com.notnative.app";
 
@@ -42,6 +49,8 @@ pub struct MainApp {
     context_item_name: Rc<RefCell<String>>,
     context_is_folder: Rc<RefCell<bool>>,
     renaming_item: Rc<RefCell<Option<(String, bool)>>>, // (nombre, es_carpeta)
+    main_window: adw::ApplicationWindow,
+    link_spans: Rc<RefCell<Vec<LinkSpan>>>,
 }
 
 #[derive(Debug)]
@@ -68,6 +77,7 @@ pub enum AppMsg {
     LoadNote(String),
     CreateNewNote(String),
     UpdateCursorPosition(usize),
+    SyncFromGtkBuffer(String),
 }
 
 #[component(pub)]
@@ -134,6 +144,7 @@ impl SimpleComponent for MainApp {
                                 set_tooltip_text: Some("Nueva nota"),
                                 add_css_class: "flat",
                                 add_css_class: "circular",
+                                connect_clicked => AppMsg::ShowCreateNoteDialog,
                             },
                         },
                         
@@ -211,7 +222,7 @@ impl SimpleComponent for MainApp {
                                 //     set_label: "8BIT",
                                 //     set_tooltip_text: Some("Modo retro 8-bit"),
                                 //     add_css_class: "flat",
-                                //     connect_toggled[sender] => move |btn| {
+                                //     connect_toggled[sender] , move |btn| {
                                 //         if btn.is_active() {
                                 //             sender.input(AppMsg::Toggle8BitMode);
                                 //         } else {
@@ -357,20 +368,32 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
             context_item_name: Rc::new(RefCell::new(String::new())),
             context_is_folder: Rc::new(RefCell::new(false)),
             renaming_item: Rc::new(RefCell::new(None)),
+            main_window: widgets.main_window.clone(),
+            link_spans: Rc::new(RefCell::new(Vec::new())),
         };
 
         model.apply_theme(&style_manager);
         
         // Crear acciones para el menú contextual
         let rename_action = gtk::gio::SimpleAction::new("rename", None);
-        rename_action.connect_activate(gtk::glib::clone!(@strong sender, @strong model.context_item_name as item_name, @strong model.context_is_folder as is_folder => move |_, _| {
-            sender.input(AppMsg::RenameItem(item_name.borrow().clone(), *is_folder.borrow()));
-        }));
+        rename_action.connect_activate(gtk::glib::clone!(
+            #[strong] sender,
+            #[strong(rename_to = item_name)] model.context_item_name,
+            #[strong(rename_to = is_folder)] model.context_is_folder,
+            move |_, _| {
+                sender.input(AppMsg::RenameItem(item_name.borrow().clone(), *is_folder.borrow()));
+            }
+        ));
         
         let delete_action = gtk::gio::SimpleAction::new("delete", None);
-        delete_action.connect_activate(gtk::glib::clone!(@strong sender, @strong model.context_item_name as item_name, @strong model.context_is_folder as is_folder => move |_, _| {
-            sender.input(AppMsg::DeleteItem(item_name.borrow().clone(), *is_folder.borrow()));
-        }));
+        delete_action.connect_activate(gtk::glib::clone!(
+            #[strong] sender,
+            #[strong(rename_to = item_name)] model.context_item_name,
+            #[strong(rename_to = is_folder)] model.context_is_folder,
+            move |_, _| {
+                sender.input(AppMsg::DeleteItem(item_name.borrow().clone(), *is_folder.borrow()));
+            }
+        ));
         
         let action_group = gtk::gio::SimpleActionGroup::new();
         action_group.add_action(&rename_action);
@@ -385,14 +408,14 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
         model.update_status_bar(&sender);
         
         // Configurar autoguardado cada 5 segundos
-        gtk::glib::timeout_add_seconds_local(5, gtk::glib::clone!(@strong sender => move || {
+        gtk::glib::timeout_add_seconds_local(5, gtk::glib::clone!(#[strong] sender , move || {
             sender.input(AppMsg::AutoSave);
             gtk::glib::ControlFlow::Continue
         }));
 
         let action_group = gtk::gio::SimpleActionGroup::new();
         let toggle_action = gtk::gio::SimpleAction::new("toggle-theme", None);
-        toggle_action.connect_activate(gtk::glib::clone!(@strong sender => move |_, _| {
+        toggle_action.connect_activate(gtk::glib::clone!(#[strong] sender , move |_, _| {
             sender.input(AppMsg::ToggleTheme);
         }));
         action_group.add_action(&toggle_action);
@@ -412,7 +435,7 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
         widgets.main_window.add_controller(shortcuts);
         
         // Conectar señal de cierre para guardar antes de cerrar
-        widgets.main_window.connect_close_request(gtk::glib::clone!(@strong sender => move |_| {
+        widgets.main_window.connect_close_request(gtk::glib::clone!(#[strong] sender , move |_| {
             sender.input(AppMsg::SaveCurrentNote);
             gtk::glib::Propagation::Proceed
         }));
@@ -420,8 +443,9 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
         // Conectar eventos de teclado al TextView
         let key_controller = gtk::EventControllerKey::new();
         key_controller.connect_key_pressed(
-            gtk::glib::clone!(@strong sender, @strong mode => move |_controller, keyval, _keycode, modifiers| {
+            gtk::glib::clone!(#[strong] sender, #[strong] mode , move |_controller, keyval, _keycode, modifiers| {
                 let key_name = keyval.name().map(|s| s.to_string()).unwrap_or_default();
+                let current_mode = *mode.borrow();
                 
                 let key_mods = KeyModifiers {
                     ctrl: modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK),
@@ -429,32 +453,149 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
                     shift: modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK),
                 };
 
-                sender.input(AppMsg::KeyPress {
-                    key: key_name,
-                    modifiers: key_mods,
-                });
-
-                // Siempre bloqueamos las teclas para manejarlas nosotros
-                // Ya sincronizamos manualmente con el TextView
-                gtk::glib::Propagation::Stop
+                // En modo Insert, solo interceptar teclas especiales (Escape)
+                // Dejar que GTK maneje el resto para permitir composición de acentos
+                if current_mode == EditorMode::Insert {
+                    match key_name.as_str() {
+                        "Escape" => {
+                            sender.input(AppMsg::KeyPress {
+                                key: key_name,
+                                modifiers: key_mods,
+                            });
+                            gtk::glib::Propagation::Stop
+                        }
+                        _ => {
+                            // Dejar que GTK maneje la tecla (para acentos, etc.)
+                            gtk::glib::Propagation::Proceed
+                        }
+                    }
+                } else {
+                    // En modo Normal y otros, manejar todas las teclas nosotros
+                    sender.input(AppMsg::KeyPress {
+                        key: key_name,
+                        modifiers: key_mods,
+                    });
+                    gtk::glib::Propagation::Stop
+                }
             })
         );
         widgets.text_view.add_controller(key_controller);
         
-        // Conectar eventos de clic para actualizar posición del cursor
-        let click_controller = gtk::GestureClick::new();
-        click_controller.connect_released(
-            gtk::glib::clone!(@strong sender, @strong text_buffer => move |_gesture, _n_press, _x, _y| {
-                // Obtener la posición del cursor después del clic
-                let cursor_mark = text_buffer.get_insert();
-                let cursor_iter = text_buffer.iter_at_mark(&cursor_mark);
-                let cursor_pos = cursor_iter.offset() as usize;
+        // Conectar cambios en el text_buffer para sincronizar en modo Insert
+        let buffer_clone = model.buffer.clone();
+        model.text_buffer.connect_changed(
+            gtk::glib::clone!(#[strong] mode, #[strong] sender , move |text_buffer| {
+                let current_mode = *mode.borrow();
                 
-                // Notificar al modelo para actualizar su cursor_position
-                sender.input(AppMsg::UpdateCursorPosition(cursor_pos));
+                // Solo sincronizar cuando GTK hace cambios en modo Insert
+                if current_mode == EditorMode::Insert {
+                    let text = text_buffer.text(
+                        &text_buffer.start_iter(),
+                        &text_buffer.end_iter(),
+                        false
+                    ).to_string();
+                    
+                    // Actualizar nuestro buffer interno
+                    sender.input(AppMsg::SyncFromGtkBuffer(text));
+                }
             })
         );
+        
+        let link_spans = model.link_spans.clone();
+        let click_text_view = widgets.text_view.clone();
+        // Conectar eventos de clic para actualizar posición del cursor o abrir enlaces
+        let click_controller = gtk::GestureClick::new();
+        click_controller.connect_released(
+            gtk::glib::clone!(
+                #[strong] sender,
+                #[strong] text_buffer,
+                #[strong(rename_to = text_view)] click_text_view,
+                #[strong] mode,
+                #[strong] link_spans,
+                move |gesture, _n_press, x, y| {
+                    let current_mode = *mode.borrow();
+                    if current_mode == EditorMode::Normal {
+                        // Convertir coordenadas de ventana a buffer
+                        let (buffer_x, buffer_y) = text_view.window_to_buffer_coords(
+                            gtk::TextWindowType::Widget,
+                            x as i32,
+                            y as i32
+                        );
+                        
+                        // Obtener el iter en la posición exacta (devuelve None si no hay texto)
+                        if let Some((iter, _trailing)) = text_view.iter_at_position(buffer_x, buffer_y) {
+                            let offset = iter.offset();
+                            if let Some(link) = link_spans
+                                .borrow()
+                                .iter()
+                                .find(|span| offset >= span.start && offset < span.end)
+                            {
+                                gesture.set_state(gtk::EventSequenceState::Claimed);
+                                if let Err(err) = gtk::gio::AppInfo::launch_default_for_uri(
+                                    &link.url,
+                                    None::<&gtk::gio::AppLaunchContext>,
+                                ) {
+                                    eprintln!("Error al abrir enlace {}: {}", link.url, err);
+                                }
+                                return;
+                            }
+                        }
+                    }
+
+                    // Obtener la posición del cursor después del clic
+                    let cursor_mark = text_buffer.get_insert();
+                    let cursor_iter = text_buffer.iter_at_mark(&cursor_mark);
+                    let cursor_pos = cursor_iter.offset() as usize;
+                    
+                    // Notificar al modelo para actualizar su cursor_position
+                    sender.input(AppMsg::UpdateCursorPosition(cursor_pos));
+                }
+            )
+        );
         widgets.text_view.add_controller(click_controller);
+        
+        // Agregar controlador de movimiento del mouse para cambiar cursor sobre links
+        let motion_controller = gtk::EventControllerMotion::new();
+        let motion_text_view = widgets.text_view.clone();
+        motion_controller.connect_motion(
+            gtk::glib::clone!(
+                #[strong(rename_to = text_view)] motion_text_view,
+                #[strong] mode,
+                #[strong] link_spans,
+                move |_controller, x, y| {
+                    let current_mode = *mode.borrow();
+                    if current_mode == EditorMode::Normal {
+                        // Convertir coordenadas de ventana a buffer
+                        let (buffer_x, buffer_y) = text_view.window_to_buffer_coords(
+                            gtk::TextWindowType::Widget,
+                            x as i32,
+                            y as i32
+                        );
+                        
+                        // Verificar si hay texto en esa posición
+                        if let Some((iter, _trailing)) = text_view.iter_at_position(buffer_x, buffer_y) {
+                            let offset = iter.offset();
+                            let is_over_link = link_spans
+                                .borrow()
+                                .iter()
+                                .any(|span| offset >= span.start && offset < span.end);
+                            
+                            if is_over_link {
+                                text_view.set_cursor_from_name(Some("pointer"));
+                            } else {
+                                text_view.set_cursor_from_name(Some("text"));
+                            }
+                        } else {
+                            // No hay texto en esa posición
+                            text_view.set_cursor_from_name(Some("text"));
+                        }
+                    } else {
+                        text_view.set_cursor_from_name(Some("text"));
+                    }
+                }
+            )
+        );
+        widgets.text_view.add_controller(motion_controller);
         
         // Poblar la lista de notas
         model.populate_notes_list(&sender);
@@ -463,7 +604,7 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
         // Conectar evento de cambio de selección en el ListBox
         let is_populating_for_select = model.is_populating_list.clone();
         widgets.notes_list.connect_row_selected(
-            gtk::glib::clone!(@strong sender => move |_list_box, row| {
+            gtk::glib::clone!(#[strong] sender , move |_list_box, row| {
                 // No cargar notas si se está repoblando la lista
                 if *is_populating_for_select.borrow() {
                     return;
@@ -494,7 +635,7 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
         // Conectar click en carpetas para expandir/colapsar
         let folder_click = gtk::GestureClick::new();
         folder_click.connect_released(
-            gtk::glib::clone!(@strong widgets.notes_list as notes_list, @strong sender => move |gesture, _n_press, x, y| {
+            gtk::glib::clone!(#[strong(rename_to = notes_list)] widgets.notes_list, #[strong] sender , move |gesture, _n_press, x, y| {
                 gesture.set_state(gtk::EventSequenceState::Claimed);
                 
                 // Obtener la fila bajo el click
@@ -530,7 +671,7 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
         let right_click = gtk::GestureClick::new();
         right_click.set_button(3); // Botón derecho
         right_click.connect_released(
-            gtk::glib::clone!(@strong widgets.notes_list as notes_list, @strong sender => move |_, _n_press, x, y| {
+            gtk::glib::clone!(#[strong(rename_to = notes_list)] widgets.notes_list, #[strong] sender , move |_, _n_press, x, y| {
                 // Obtener la fila bajo el click
                 if let Some(row) = notes_list.row_at_y(y as i32) {
                     if let Some(child) = row.child() {
@@ -560,7 +701,7 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
         let motion_controller = gtk::EventControllerMotion::new();
         let is_populating_clone = model.is_populating_list.clone();
         motion_controller.connect_motion(
-            gtk::glib::clone!(@strong widgets.notes_list as notes_list, @strong sender => move |_controller, _x, y| {
+            gtk::glib::clone!(#[strong(rename_to = notes_list)] widgets.notes_list, #[strong] sender , move |_controller, _x, y| {
                 // No cargar notas si se está repoblando la lista
                 if *is_populating_clone.borrow() {
                     return;
@@ -592,7 +733,7 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
         // Agregar control de teclado al ListBox para navegación con j/k
         let notes_key_controller = gtk::EventControllerKey::new();
         notes_key_controller.connect_key_pressed(
-            gtk::glib::clone!(@strong widgets.notes_list as notes_list, @strong sender => move |_controller, keyval, _keycode, _modifiers| {
+            gtk::glib::clone!(#[strong(rename_to = notes_list)] widgets.notes_list, #[strong] sender , move |_controller, keyval, _keycode, _modifiers| {
                 let key_name = keyval.name().map(|s| s.to_string()).unwrap_or_default();
                 
                 match key_name.as_str() {
@@ -843,6 +984,22 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
                 self.populate_notes_list(&sender);
                 *self.is_populating_list.borrow_mut() = false;
             }
+            
+            AppMsg::SyncFromGtkBuffer(text) => {
+                // Actualizar buffer interno con el texto del GTK buffer
+                self.buffer = NoteBuffer::from_text(&text);
+                
+                // Actualizar posición del cursor
+                let cursor_mark = self.text_buffer.get_insert();
+                let cursor_iter = self.text_buffer.iter_at_mark(&cursor_mark);
+                self.cursor_position = cursor_iter.offset() as usize;
+                
+                // Marcar como cambio sin guardar
+                self.has_unsaved_changes = true;
+                
+                // Actualizar barra de estado
+                self.update_status_bar(&sender);
+            }
         }
     }
 }
@@ -988,6 +1145,12 @@ impl MainApp {
             EditorAction::OpenSidebar => {
                 sender.input(AppMsg::OpenSidebarAndFocus);
             }
+            EditorAction::CloseSidebar => {
+                // Solo cerrar si el sidebar está abierto
+                if self.sidebar_visible {
+                    sender.input(AppMsg::ToggleSidebar);
+                }
+            }
             EditorAction::CreateNote => {
                 sender.input(AppMsg::ShowCreateNoteDialog);
             }
@@ -1070,11 +1233,40 @@ impl MainApp {
     fn render_clean_markdown(&self, text: &str) -> String {
         let mut result = String::new();
         let mut chars = text.chars().peekable();
+        let mut in_code_block = false;
         
         while let Some(ch) = chars.next() {
             match ch {
-                // Encabezados: remover #
-                '#' if result.is_empty() || result.ends_with('\n') => {
+                // Code blocks: ```
+                '`' if chars.peek() == Some(&'`') => {
+                    let mut backtick_count = 1;
+                    while chars.peek() == Some(&'`') {
+                        chars.next();
+                        backtick_count += 1;
+                    }
+
+                    if backtick_count >= 3 {
+                        // Toggle code block (``` o más)
+                        in_code_block = !in_code_block;
+
+                        // Consumir toda la línea incluyendo el \n
+                        // Esta línea NO debe aparecer en el texto limpio
+                        while let Some(&next_ch) = chars.peek() {
+                            chars.next();
+                            if next_ch == '\n' {
+                                break; // Consumir el \n y salir
+                            }
+                        }
+
+                        continue;
+                    } else if backtick_count == 1 {
+                        // Código inline - no agregar el backtick
+                        continue;
+                    }
+                }
+                
+                // Encabezados: remover # (solo si no estamos en code block)
+                '#' if !in_code_block && (result.is_empty() || result.ends_with('\n')) => {
                     // Contar cuántos # hay
                     let mut hash_count = 1;
                     while chars.peek() == Some(&'#') {
@@ -1086,18 +1278,75 @@ impl MainApp {
                         chars.next();
                     }
                 }
+                
+                // Listas: remover - o números al inicio de línea
+                '-' if !in_code_block && (result.is_empty() || result.ends_with('\n')) => {
+                    if chars.peek() == Some(&' ') {
+                        chars.next(); // Saltar el espacio
+                        result.push('•'); // Agregar bullet
+                        result.push(' ');
+                    } else {
+                        result.push(ch);
+                    }
+                }
+                
+                // Blockquotes: remover >
+                '>' if !in_code_block && (result.is_empty() || result.ends_with('\n')) => {
+                    if chars.peek() == Some(&' ') {
+                        chars.next(); // Saltar el espacio
+                    }
+                }
+                
+                // Links: [texto](url) -> mostrar solo texto
+                '[' if !in_code_block => {
+                    let mut link_text = String::new();
+                    let mut found_close = false;
+                    
+                    // Extraer texto del link
+                    while let Some(&next_ch) = chars.peek() {
+                        chars.next();
+                        if next_ch == ']' {
+                            found_close = true;
+                            break;
+                        }
+                        link_text.push(next_ch);
+                    }
+                    
+                    // Si encontramos ](, saltar la URL
+                    if found_close && chars.peek() == Some(&'(') {
+                        chars.next(); // Consumir (
+                        while let Some(&next_ch) = chars.peek() {
+                            chars.next();
+                            if next_ch == ')' {
+                                break;
+                            }
+                        }
+                        result.push_str(&link_text);
+                    } else {
+                        // No era un link válido, restaurar [
+                        result.push('[');
+                        result.push_str(&link_text);
+                        if found_close {
+                            result.push(']');
+                        }
+                    }
+                }
+                
                 // Negrita: remover **
-                '*' if chars.peek() == Some(&'*') => {
+                '*' if !in_code_block && chars.peek() == Some(&'*') => {
                     chars.next(); // Consumir el segundo *
                 }
-                // Cursiva: remover *
-                '*' => {
+                
+                // Cursiva: remover * (solo si no es parte de **)
+                '*' if !in_code_block => {
                     // Omitir el *
                 }
+                
                 // Código inline: remover `
-                '`' => {
+                '`' if !in_code_block => {
                     // Omitir el `
                 }
+                
                 // Todo lo demás: mantener
                 _ => result.push(ch),
             }
@@ -1157,43 +1406,190 @@ impl MainApp {
         let end = self.text_buffer.end_iter();
         self.text_buffer.remove_all_tags(&start, &end);
         
-        // Aplicar estilos línea por línea
-        let mut line_start_offset = 0;
-        for line in clean_text.lines() {
-            let line_len = line.chars().count();
+        // Obtener texto original para detectar markdown
+        let original_text = self.buffer.to_string();
+        let original_lines: Vec<&str> = original_text.lines().collect();
+        
+        // Preparar líneas limpias para mapearlas a las originales
+        let clean_lines: Vec<&str> = clean_text.lines().collect();
+        self.link_spans.borrow_mut().clear();
+        let mut clean_idx = 0usize;
+        let mut orig_idx = 0usize;
+        let mut in_code_block = false;
+        let mut current_iter = self.text_buffer.start_iter();
+        
+        while orig_idx < original_lines.len() {
+            let original_line = original_lines[orig_idx];
+            let trimmed = original_line.trim();
             
-            // Detectar encabezados por tamaño de fuente (ya no tienen #)
-            // Necesitamos usar el texto original para detectar el nivel
-            let original_text = self.buffer.to_string();
-            let original_lines: Vec<&str> = original_text.lines().collect();
-            let clean_lines: Vec<&str> = clean_text.lines().collect();
+            // Las líneas que contienen ``` NO aparecen en el texto limpio,
+            // pero sí afectan al estado del bloque de código.
+            if trimmed.starts_with("```") {
+                in_code_block = !in_code_block;
+                orig_idx += 1;
+                // NO incrementar clean_idx porque esta línea no existe en clean_text
+                continue;
+            }
             
-            if let Some(line_idx) = clean_lines.iter().position(|&l| l == line) {
-                if let Some(original_line) = original_lines.get(line_idx) {
-                    let tag_name = if original_line.starts_with("### ") {
-                        Some("h3")
-                    } else if original_line.starts_with("## ") {
-                        Some("h2")
-                    } else if original_line.starts_with("# ") {
-                        Some("h1")
-                    } else {
-                        None
-                    };
-                    
-                    if let Some(tag) = tag_name {
-                        let mut start_iter = self.text_buffer.start_iter();
-                        start_iter.set_offset(line_start_offset as i32);
-                        let mut end_iter = start_iter.clone();
-                        end_iter.forward_chars(line_len as i32);
-                        
-                        if let Some(text_tag) = self.text_buffer.tag_table().lookup(tag) {
-                            self.text_buffer.apply_tag(&text_tag, &start_iter, &end_iter);
-                        }
-                    }
+            // Si ya no hay más líneas limpias, terminar
+            if clean_idx >= clean_lines.len() {
+                break;
+            }
+            
+            let clean_line = clean_lines[clean_idx];
+            let line_start = current_iter.clone();
+            
+            if !current_iter.ends_line() {
+                current_iter.forward_to_line_end();
+            }
+            let line_end = current_iter.clone();
+            
+            if !current_iter.is_end() {
+                current_iter.forward_line();
+            }
+            
+            // Asignar tag de bloque según la línea original
+            let tag_name = if in_code_block {
+                Some("codeblock")
+            } else if original_line.starts_with("### ") {
+                Some("h3")
+            } else if original_line.starts_with("## ") {
+                Some("h2")
+            } else if original_line.starts_with("# ") {
+                Some("h1")
+            } else if original_line.starts_with("> ") {
+                Some("blockquote")
+            } else if original_line.starts_with("- ") || original_line.starts_with("* ") {
+                Some("list")
+            } else if original_line.chars().next().map_or(false, |c| c.is_numeric())
+                && original_line.contains(". ") {
+                Some("list")
+            } else {
+                None
+            };
+            
+            if let Some(tag) = tag_name {
+                if let Some(text_tag) = self.text_buffer.tag_table().lookup(tag) {
+                    self.text_buffer.apply_tag(&text_tag, &line_start, &line_end);
                 }
             }
             
-            line_start_offset += line_len + 1; // +1 para el \n
+            if !in_code_block {
+                let base_offset = line_start.offset();
+                self.apply_inline_styles(clean_line, original_line, &line_start, base_offset);
+            }
+            
+            clean_idx += 1;
+            orig_idx += 1;
+        }
+    }
+    
+    /// Aplica estilos inline dentro de una línea (negrita, cursiva, código, links)
+    fn apply_inline_styles(&self, clean_line: &str, original_line: &str, line_start: &gtk::TextIter, line_offset: i32) {
+        let mut clean_pos = 0;
+        let mut orig_pos = 0;
+        let mut in_bold = false;
+        let mut in_italic = false;
+        let mut in_code = false;
+        let mut in_link = false;
+        let mut link_start_offset: Option<i32> = None;
+        
+        let orig_chars: Vec<char> = original_line.chars().collect();
+        let clean_chars: Vec<char> = clean_line.chars().collect();
+        
+        while orig_pos < orig_chars.len() {
+            let ch = orig_chars[orig_pos];
+            
+            // Detectar inicio/fin de negrita **
+            if ch == '*' && orig_pos + 1 < orig_chars.len() && orig_chars[orig_pos + 1] == '*' {
+                in_bold = !in_bold;
+                orig_pos += 2;
+                continue;
+            }
+            
+            // Detectar inicio/fin de cursiva *
+            if ch == '*' {
+                in_italic = !in_italic;
+                orig_pos += 1;
+                continue;
+            }
+            
+            // Detectar inicio/fin de código inline `
+            if ch == '`' {
+                in_code = !in_code;
+                orig_pos += 1;
+                continue;
+            }
+            
+            // Detectar links [texto](url)
+            if ch == '[' && !in_link {
+                in_link = true;
+                link_start_offset = Some(line_offset + clean_pos as i32);
+                orig_pos += 1;
+                continue;
+            }
+            
+            if ch == ']' && in_link {
+                orig_pos += 1;
+                let mut url = String::new();
+                if orig_pos < orig_chars.len() && orig_chars[orig_pos] == '(' {
+                    orig_pos += 1;
+                    while orig_pos < orig_chars.len() && orig_chars[orig_pos] != ')' {
+                        url.push(orig_chars[orig_pos]);
+                        orig_pos += 1;
+                    }
+                    if orig_pos < orig_chars.len() && orig_chars[orig_pos] == ')' {
+                        orig_pos += 1;
+                    }
+                }
+                if let Some(start) = link_start_offset.take() {
+                    if !url.is_empty() {
+                        let end_offset = line_offset + clean_pos as i32;
+                        self.link_spans
+                            .borrow_mut()
+                            .push(LinkSpan { start, end: end_offset, url });
+                    }
+                }
+                in_link = false;
+                continue;
+            }
+            
+            // El carácter aparece en el texto limpio
+            if clean_pos < clean_chars.len() && clean_chars[clean_pos] == ch {
+                // Aplicar tags activos
+                let mut start_iter = line_start.clone();
+                start_iter.forward_chars(clean_pos as i32);
+                let mut end_iter = start_iter.clone();
+                end_iter.forward_chars(1);
+                
+                if in_bold {
+                    if let Some(tag) = self.text_buffer.tag_table().lookup("bold") {
+                        self.text_buffer.apply_tag(&tag, &start_iter, &end_iter);
+                    }
+                }
+                
+                if in_italic {
+                    if let Some(tag) = self.text_buffer.tag_table().lookup("italic") {
+                        self.text_buffer.apply_tag(&tag, &start_iter, &end_iter);
+                    }
+                }
+                
+                if in_code {
+                    if let Some(tag) = self.text_buffer.tag_table().lookup("code") {
+                        self.text_buffer.apply_tag(&tag, &start_iter, &end_iter);
+                    }
+                }
+                
+                if in_link {
+                    if let Some(tag) = self.text_buffer.tag_table().lookup("link") {
+                        self.text_buffer.apply_tag(&tag, &start_iter, &end_iter);
+                    }
+                }
+                
+                clean_pos += 1;
+            }
+            
+            orig_pos += 1;
         }
     }
     
@@ -1242,6 +1638,24 @@ impl MainApp {
         codeblock_tag.set_left_margin(20);
         codeblock_tag.set_size_points(10.0);
         tag_table.add(&codeblock_tag);
+        
+        // Link - azul y subrayado
+        let link_tag = gtk::TextTag::new(Some("link"));
+        link_tag.set_foreground_rgba(Some(&gtk::gdk::RGBA::new(0.2, 0.4, 0.8, 1.0)));
+        link_tag.set_underline(gtk::pango::Underline::Single);
+        tag_table.add(&link_tag);
+        
+        // Lista - con margen
+        let list_tag = gtk::TextTag::new(Some("list"));
+        list_tag.set_left_margin(20);
+        tag_table.add(&list_tag);
+        
+        // Blockquote - gris, cursiva, borde izquierdo
+        let blockquote_tag = gtk::TextTag::new(Some("blockquote"));
+        blockquote_tag.set_style(gtk::pango::Style::Italic);
+        blockquote_tag.set_foreground_rgba(Some(&gtk::gdk::RGBA::new(0.5, 0.5, 0.5, 1.0)));
+        blockquote_tag.set_left_margin(20);
+        tag_table.add(&blockquote_tag);
     }
     
     fn apply_markdown_styles(&self) {
@@ -1716,7 +2130,7 @@ impl MainApp {
                             // Dar foco al entry
                             gtk::glib::source::timeout_add_local(
                                 std::time::Duration::from_millis(50),
-                                gtk::glib::clone!(@strong entry => move || {
+                                gtk::glib::clone!(#[strong] entry , move || {
                                     entry.grab_focus();
                                     entry.select_region(0, -1);
                                     gtk::glib::ControlFlow::Break
@@ -1769,16 +2183,31 @@ impl MainApp {
         // o manualmente en otros contextos
     }
     
-    /// Muestra un diálogo para crear una nueva nota
+    /// Muestra un diálogo modal centrado para crear una nueva nota
     fn show_create_note_dialog(&self, sender: &ComponentSender<Self>) {
-        let dialog = gtk::Window::builder()
-            .title("Nueva nota")
+        // Crear ventana de diálogo centrada y compacta
+        let dialog = adw::Window::builder()
+            .transient_for(&self.main_window)
             .modal(true)
-            .default_width(400)
-            .default_height(150)
+            .default_width(360)
+            .default_height(180)
             .resizable(false)
             .build();
         
+        // Contenedor principal con márgenes
+        let main_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(0)
+            .build();
+        
+        // Header con título
+        let header = adw::HeaderBar::builder()
+            .title_widget(&gtk::Label::builder()
+                .label("Nueva nota")
+                .build())
+            .build();
+        
+        // Contenido
         let content_box = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .spacing(16)
@@ -1786,21 +2215,27 @@ impl MainApp {
             .margin_end(24)
             .margin_top(24)
             .margin_bottom(24)
-            .build();
-        
-        let label = gtk::Label::builder()
-            .label("Nombre de la nota (usa '/' para carpetas)")
-            .xalign(0.0)
+            .vexpand(true)
+            .valign(gtk::Align::Center)
             .build();
         
         let entry = gtk::Entry::builder()
             .placeholder_text("ejemplo: proyectos/nueva-idea")
             .build();
         
+        let hint_label = gtk::Label::builder()
+            .label("<small>Usa '/' para crear en carpetas</small>")
+            .use_markup(true)
+            .xalign(0.0)
+            .build();
+        hint_label.add_css_class("dim-label");
+        
+        // Botones
         let button_box = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
-            .spacing(12)
+            .spacing(8)
             .halign(gtk::Align::End)
+            .margin_top(8)
             .build();
         
         let cancel_button = gtk::Button::builder()
@@ -1810,53 +2245,72 @@ impl MainApp {
         let create_button = gtk::Button::builder()
             .label("Crear")
             .build();
-        
         create_button.add_css_class("suggested-action");
         
         button_box.append(&cancel_button);
         button_box.append(&create_button);
         
-        content_box.append(&label);
         content_box.append(&entry);
+        content_box.append(&hint_label);
         content_box.append(&button_box);
         
-        dialog.set_child(Some(&content_box));
+        main_box.append(&header);
+        main_box.append(&content_box);
+        
+        dialog.set_content(Some(&main_box));
         
         // Conectar botones
-        cancel_button.connect_clicked(gtk::glib::clone!(@strong dialog => move |_| {
-            dialog.close();
-        }));
+        let dialog_clone = dialog.clone();
+        cancel_button.connect_clicked(move |_| {
+            dialog_clone.close();
+        });
         
+        let dialog_clone2 = dialog.clone();
         create_button.connect_clicked(
-            gtk::glib::clone!(@strong sender, @strong entry, @strong dialog => move |_| {
+            gtk::glib::clone!(#[strong] sender, #[strong] entry , move |_| {
                 let text = entry.text();
                 let name = text.trim();
                 
                 if !name.is_empty() {
                     sender.input(AppMsg::CreateNewNote(name.to_string()));
-                    dialog.close();
+                    dialog_clone2.close();
                 }
             })
         );
         
         // Enter también crea la nota
+        let dialog_clone3 = dialog.clone();
         entry.connect_activate(
-            gtk::glib::clone!(@strong sender, @strong dialog => move |entry| {
+            gtk::glib::clone!(#[strong] sender , move |entry| {
                 let text = entry.text();
                 let name = text.trim();
                 
                 if !name.is_empty() {
                     sender.input(AppMsg::CreateNewNote(name.to_string()));
-                    dialog.close();
+                    dialog_clone3.close();
                 }
             })
         );
         
+        // ESC cierra el diálogo
+        let esc_controller = gtk::EventControllerKey::new();
+        let dialog_clone4 = dialog.clone();
+        esc_controller.connect_key_pressed(move |_, keyval, _, _| {
+            let key_name = keyval.name().map(|s| s.to_string());
+            if key_name.as_deref() == Some("Escape") {
+                dialog_clone4.close();
+                return gtk::glib::Propagation::Stop;
+            }
+            gtk::glib::Propagation::Proceed
+        });
+        dialog.add_controller(esc_controller);
+        
+        // Mostrar el diálogo
         dialog.present();
         
         // Dar foco al entry
         gtk::glib::source::timeout_add_local(
-            std::time::Duration::from_millis(50),
+            std::time::Duration::from_millis(100),
             move || {
                 entry.grab_focus();
                 gtk::glib::ControlFlow::Break
