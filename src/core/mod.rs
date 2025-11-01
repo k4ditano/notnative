@@ -4,6 +4,8 @@ pub mod command;
 pub mod note_file;
 pub mod markdown;
 pub mod notes_config;
+pub mod database;
+pub mod frontmatter;
 
 pub use note_buffer::NoteBuffer;
 pub use editor_mode::EditorMode;
@@ -11,3 +13,5 @@ pub use command::{CommandParser, EditorAction, KeyModifiers};
 pub use note_file::{NoteFile, NotesDirectory};
 pub use markdown::{MarkdownParser, TextStyle, StyleType};
 pub use notes_config::NotesConfig;
+pub use database::{NotesDatabase, NoteMetadata, Tag, SearchQuery, SearchResult, DatabaseError};
+pub use frontmatter::{Frontmatter, extract_tags, extract_inline_tags, extract_all_tags, update_tags};

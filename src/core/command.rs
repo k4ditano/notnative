@@ -28,6 +28,11 @@ pub enum EditorAction {
     Undo,
     Redo,
     
+    /// Portapapeles
+    Copy,
+    Cut,
+    Paste,
+    
     /// Comandos ex-style
     Save,
     Quit,
@@ -70,6 +75,9 @@ impl CommandParser {
                 "s" => EditorAction::Save,
                 "z" => EditorAction::Undo,
                 "r" => EditorAction::Redo,
+                "c" => EditorAction::Copy,
+                "x" => EditorAction::Cut,
+                "v" => EditorAction::Paste,
                 _ => EditorAction::None,
             };
         }
@@ -136,6 +144,11 @@ impl CommandParser {
         if modifiers.ctrl {
             return match key {
                 "s" => EditorAction::Save,
+                "c" => EditorAction::Copy,
+                "x" => EditorAction::Cut,
+                "v" => EditorAction::Paste,
+                "z" => EditorAction::Undo,
+                "r" => EditorAction::Redo,
                 _ => EditorAction::None,
             };
         }

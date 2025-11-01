@@ -213,20 +213,19 @@ popover.menu {
   border: 1px solid @border;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-popover.menu > contents {
-  background-color: @base;
-  background-image: none;
-  border: none;
-  border-radius: 7px;
   padding: 6px;
 }
 
-popover.menu > arrow {
-  background-color: @base;
+popover.menu > contents {
+  background-color: transparent;
   background-image: none;
-  border-color: @border;
+  border: none;
+  padding: 0;
+}
+
+popover.menu > arrow {
+  background: none;
+  border: none;
 }
 
 popover.menu box {
@@ -276,10 +275,15 @@ popover.menu.context-menu {
 }
 
 popover.menu.context-menu > contents {
-  background-color: @base;
+  background-color: transparent;
   background-image: none;
   border: none;
-  border-radius: 6px;
+  padding: 0;
+}
+
+popover.menu.context-menu > arrow {
+  background: none;
+  border: none;
 }
 
 popover.menu.context-menu box {
@@ -434,3 +438,241 @@ togglebutton:checked {
 @define-color notnative_insert_mode #73d216;
 @define-color notnative_command_mode #f57900;
 @define-color notnative_visual_mode #ad7fa8;
+
+/* Tags container y pills */
+.tags-container {
+  background-color: transparent;
+  padding: 0;
+}
+
+.tag-pill {
+  background-color: alpha(@selected-text, 0.15);
+  border: 1px solid alpha(@border, 0.3);
+  border-radius: 12px;
+  padding: 2px 8px 2px 10px;
+  margin: 0 2px;
+  transition: all 200ms cubic-bezier(0.4, 0.0, 0.2, 1);
+}
+
+.tag-pill:hover {
+  background-color: alpha(@selected-text, 0.25);
+  border-color: @border;
+  transform: scale(1.05);
+}
+
+.tag-pill label.tag-label {
+  font-size: 0.75em;
+  font-weight: 500;
+  color: @text;
+  padding: 0;
+  margin: 0;
+}
+
+.tag-pill button.tag-remove {
+  min-width: 16px;
+  min-height: 16px;
+  padding: 2px;
+  margin: 0 0 0 4px;
+  border-radius: 50%;
+  background-color: transparent;
+  border: none;
+  opacity: 0.6;
+  transition: opacity 150ms ease, background-color 150ms ease;
+}
+
+.tag-pill button.tag-remove:hover {
+  opacity: 1;
+  background-color: alpha(@text, 0.1);
+}
+
+.small-button {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 4px;
+  border-radius: 50%;
+}
+
+/* Animaciones suaves para opacity */
+* {
+  transition-property: opacity;
+  transition-duration: 200ms;
+  transition-timing-function: ease-out;
+}
+
+/* Dialog para añadir tags */
+dialog {
+  background-color: @base;
+  color: @text;
+  border: 1px solid @border;
+  border-radius: 8px;
+}
+
+/* Popovers: eliminar bordes internos por defecto */
+popover > contents {
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+popover > contents > * {
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+}
+
+dialog headerbar {
+  background-color: @base;
+}
+
+dialog .dialog-action-area button {
+  padding: 6px 16px;
+}
+
+/* Popover de autocompletado de tags */
+popover.tag-completion {
+  background-color: @base;
+  background-image: none;
+  border: 1px solid alpha(@border, 0.5);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  padding: 4px;
+  min-width: 0;
+}
+
+popover.tag-completion > contents {
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  padding: 0;
+}
+
+popover.tag-completion > arrow {
+  background: none;
+  border: none;
+}
+
+popover.tag-completion scrolledwindow {
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  min-width: 0;
+  padding: 0;
+}
+
+popover.tag-completion scrolledwindow > undershoot,
+popover.tag-completion scrolledwindow > overshoot {
+  background: none;
+}
+
+popover.tag-completion list,
+popover.tag-completion listbox {
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+popover.tag-completion list > row,
+popover.tag-completion listbox > row {
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  outline: none;
+}
+
+popover.tag-completion button {
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  border-radius: 4px;
+  padding: 0;
+  margin: 1px;
+  min-height: 0;
+  min-width: 0;
+  box-shadow: none;
+  outline: none;
+}
+
+popover.tag-completion button:hover {
+  background-color: alpha(@selected-text, 0.12);
+  background-image: none;
+}
+
+popover.tag-completion button:active {
+  background-color: alpha(@selected-text, 0.2);
+  background-image: none;
+}
+
+popover.tag-completion box {
+  padding: 8px 12px;
+  min-height: 0;
+  background: transparent;
+}
+
+popover.tag-completion label {
+  font-size: 0.85em;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  color: @text;
+}
+
+popover.tag-completion .dim-label {
+  opacity: 0.5;
+  font-size: 0.75em;
+  margin-left: 8px;
+  color: @text;
+}
+
+/* Popover de lista de tags */
+popover.tags-popover {
+  background-color: @base;
+  border: 1px solid @border;
+  border-radius: 8px;
+  padding: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+popover.tags-popover > contents {
+  background-color: transparent;
+  border: none;
+  padding: 0;
+  box-shadow: none;
+}
+
+popover.tags-popover > arrow {
+  background: none;
+  border: none;
+}
+
+popover.tags-popover box {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+popover.tags-popover list,
+popover.tags-popover listbox {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  margin: 0;
+}
+
+popover.tags-popover row,
+popover.tags-popover listbox > row,
+popover.tags-popover list > row {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  margin: 0;
+  padding: 0;
+}
+

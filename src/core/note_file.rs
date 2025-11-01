@@ -124,6 +124,21 @@ impl NotesDirectory {
         &self.root
     }
     
+    /// Obtiene la ruta al archivo de base de datos
+    pub fn db_path(&self) -> PathBuf {
+        self.root.parent()
+            .unwrap_or(&self.root)
+            .join("notes.db")
+    }
+    
+    /// Obtiene la carpeta relativa de una nota (si está en una subcarpeta)
+    pub fn relative_folder(&self, note_path: &Path) -> Option<String> {
+        note_path.parent()
+            .and_then(|p| p.strip_prefix(&self.root).ok())
+            .filter(|p| p != &Path::new(""))
+            .map(|p| p.to_string_lossy().to_string())
+    }
+    
     /// Lista todas las notas en el directorio (recursivo)
     pub fn list_notes(&self) -> Result<Vec<NoteFile>> {
         let mut notes = Vec::new();

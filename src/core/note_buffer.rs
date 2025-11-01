@@ -85,9 +85,10 @@ impl NoteBuffer {
 
         self.rope.insert(char_idx, text);
 
+        let char_len = text.chars().count();
         let edit = BufferEdit {
             kind: EditKind::Insert,
-            range: char_idx..char_idx + text.len(),
+            range: char_idx..char_idx + char_len,
             text: text.to_string(),
         };
 
