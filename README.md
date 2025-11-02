@@ -32,9 +32,11 @@ Built with ❤️ for [Omarchy OS](https://omarchy.org) by [k4ditano](https://gi
 
 ### Demo Video
 
-[![NotNative Demo](screenshots/youtube-transcript.png)](https://github.com/k4ditano/notnative-app/raw/master/screenshots/screensaver.mp4)
+<video src="https://github.com/k4ditano/notnative-app/raw/master/screenshots/screensaver.mp4" controls width="800">
+  Your browser does not support the video tag.
+</video>
 
-*Click to watch full demonstration of NotNative features in action*
+*Full demonstration of NotNative features in action*
 
 ### YouTube Video Integration & Transcripts
 ![YouTube Integration](screenshots/youtube-transcript.png)
