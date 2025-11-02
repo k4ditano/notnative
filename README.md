@@ -1,187 +1,278 @@
+````markdown
 # NotNative
 
-Una aplicación de notas **nativa** para escritorio Linux con soporte para markdown, comandos estilo vim y diseñada para máxima velocidad y eficiencia.
+<div align="center">
 
-## 🎯 Características
+**A blazingly fast native note-taking application for Linux**
 
-### ✅ Implementado (v0.1)
+Built with ❤️ for [Omarchy OS](https://omarchy.org) by [k4ditano](https://github.com/k4ditano) @ [h2r](https://github.com/h2r)
 
-#### Editor de texto con sistema modal vim
-- **Buffer de texto ultrarrápido** basado en `ropey` con operaciones O(log n)
-- **Sistema de comandos modal** inspirado en vim (Normal/Insert/Command/Visual)
-- **Undo/Redo granular** con historial de 1000 operaciones
-- **Navegación vim** completa: `h/j/k/l`, `0/$`, `gg/G`
-- **Edición**: `x` (delete char), `dd` (delete line), `i` (insert mode)
+![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=for-the-badge&logo=rust&logoColor=white)
+![GTK4](https://img.shields.io/badge/GTK4-4A86CF?style=for-the-badge&logo=gtk&logoColor=white)
+![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
 
-#### Interfaz GTK4 + Temas
-- **Interfaz nativa GTK4** sin libadwaita (GTK puro)
-- **Integración con temas del sistema** - Omarchy theme auto-detectado
-- **Watcher de temas** - Actualización automática al cambiar tema del sistema
-- **Márgenes optimizados** - Espaciado visual mejorado en TextView y HeaderBar
-- **Barra de estado** con indicador de modo y estadísticas en tiempo real
+</div>
 
-#### Sistema de archivos y persistencia
-- **Sistema de archivos .md** - Cada nota se guarda como archivo markdown independiente
-- **Persistencia automática** - Las notas se guardan en `~/.local/share/notnative/notes/`
-- **Autoguardado inteligente** - Guarda cada 5 segundos y al cerrar (solo si hay cambios)
-- **Indicadores visuales** - Muestra `●` en título cuando hay cambios sin guardar
-- **Gestión de notas** - Crear, cargar, guardar y listar notas .md
-- **Nota de bienvenida** - Se crea automáticamente la primera vez que se ejecuta la app
-- **Título dinámico** - La ventana muestra el nombre de la nota actual
+---
 
-#### Renderizado Markdown
-- **Renderizado markdown en tiempo real** - Vista limpia sin símbolos en modo Normal
-- **Parser robusto** con `pulldown-cmark` - Maneja offsets correctamente
-- **Soporte de sintaxis**: 
+## 🌟 About
+
+**NotNative** is a native desktop note-taking application designed specifically for **Omarchy OS**, featuring seamless integration with the Omarchy theming system. Built with modern technologies and vim-inspired commands, it delivers maximum speed and efficiency for power users.
+
+### 🎨 Omarchy OS Integration
+
+- **Automatic Theme Adaptation**: Dynamically adapts to Omarchy's system theme without libadwaita
+- **Real-time Theme Watching**: Automatically updates when you switch themes in Omarchy
+- **Native GTK4**: Pure GTK4 implementation for perfect integration with the Omarchy desktop
+- **Optimized for Wayland**: First-class support for modern Wayland compositors
+- **System Portals**: Full integration with Omarchy's D-Bus portals
+
+## ✨ Features
+
+### ✅ Implemented (v0.1)
+
+#### Vim-inspired Modal Text Editor
+- **Lightning-fast text buffer** powered by `ropey` with O(log n) operations
+- **Modal command system** inspired by vim (Normal/Insert/Command/Visual modes)
+- **Granular Undo/Redo** with 1000-operation history
+- **Complete vim navigation**: `h/j/k/l`, `0/$`, `gg/G`
+- **Editing commands**: `x` (delete char), `dd` (delete line), `i` (insert mode)
+
+#### GTK4 Interface + Theming
+- **Native GTK4 interface** without libadwaita (pure GTK)
+- **Omarchy theme integration** - Auto-detects and adapts to system theme
+- **Theme watcher** - Automatic updates when you switch themes
+- **Optimized margins** - Improved visual spacing in TextView and HeaderBar
+- **Status bar** with mode indicator and real-time statistics
+
+#### File System & Persistence
+- **Markdown file system** - Each note saved as an independent .md file
+- **Automatic persistence** - Notes saved in `~/.local/share/notnative/notes/`
+- **Smart autosave** - Saves every 5 seconds and on close (only if modified)
+- **Visual indicators** - Shows `●` in title when there are unsaved changes
+- **Note management** - Create, load, save, and list .md notes
+- **Welcome note** - Automatically created on first run
+- **Dynamic title** - Window displays current note name
+
+#### Markdown Rendering
+- **Real-time markdown rendering** - Clean view without symbols in Normal mode
+- **Robust parser** with `pulldown-cmark` - Handles offsets correctly
+- **Syntax support**: 
   - Headings (`#`, `##`, `###`)
-  - Bold (`**texto**`) e Italic (`*texto*`)
-  - Código inline (`` `código` ``) y bloques (` ``` `)
-  - Links clickeables (`[texto](url)`)
-  - Listas (`-` con bullets `•`)
+  - Bold (`**text**`) and Italic (`*text*`)
+  - Inline code (`` `code` ``) and blocks (` ``` `)
+  - Clickable links (`[text](url)`)
+  - Lists (`-` with bullets `•`)
   - Blockquotes (`>`)
-- **Modo dual**: 
-  - Modo Normal: Vista limpia sin símbolos markdown
-  - Modo Insert: Texto crudo con todos los símbolos visibles
-- **Estilos GTK TextTags** - Adaptados al tema del sistema
-- **Links interactivos** - Click para abrir en navegador, cursor pointer al hover
+- **Dual mode**: 
+  - Normal mode: Clean view without markdown symbols
+  - Insert mode: Raw text with all symbols visible
+- **GTK TextTags styling** - Adapted to system theme
+- **Interactive links** - Click to open in browser, pointer cursor on hover
 
-#### Sidebar y navegación
-- **Sidebar deslizante** con animaciones suaves de apertura/cierre
-- **Sistema de carpetas** - Organización jerárquica de notas
-- **Carpetas expandibles** - Click para expandir/colapsar
-- **Navegación con teclado** - `j/k` para moverse, `l/Esc` para cerrar
-- **Hover para cargar** - Pasa el mouse sobre una nota y se carga automáticamente
-- **Menú contextual** - Click derecho para renombrar/eliminar (en desarrollo)
-- **Shortcuts** - `Ctrl+E` para toggle, botón en header
+#### Sidebar & Navigation
+- **Sliding sidebar** with smooth open/close animations
+- **Folder system** - Hierarchical note organization
+- **Expandable folders** - Click to expand/collapse
+- **Keyboard navigation** - `j/k` to move, `l/Esc` to close
+- **Hover to load** - Hover over a note to load it automatically
+- **Context menu** - Right-click to rename/delete (in development)
+- **Shortcuts** - `Ctrl+E` to toggle, button in header
 
-#### Teclado y eventos
-- **Eventos de teclado** integrados con el sistema de comandos
-- **Composición de acentos** - Soporte completo para caracteres especiales (á, é, í, ó, ú, ñ)
-- **Todos los caracteres especiales** funcionan correctamente (.,!?:;/etc)
-- **Shortcuts globales**: `Ctrl+S` (guardar), `Ctrl+D` (cambiar tema), `Ctrl+E` (sidebar)
+#### Keyboard & Events
+- **Keyboard events** integrated with command system
+- **Accent composition** - Full support for special characters (á, é, í, ó, ú, ñ)
+- **All special characters** work correctly (.,!?:;/etc)
+- **Global shortcuts**: `Ctrl+S` (save), `Ctrl+D` (toggle theme), `Ctrl+E` (sidebar)
 
-### 🚧 En desarrollo
+### 🚧 In Development
 
-- Drag & drop en sidebar (reordenar notas, mover entre carpetas)
-- Sistema de indexación con SQLite
-- Búsqueda full-text y filtrado de notas
-- Sistema de tags con autocompletado
+- Drag & drop in sidebar (reorder notes, move between folders)
+- SQLite indexing system
+- Full-text search and note filtering
+- Tag system with autocompletion
 
-## 🚀 Instalación
+## 🚀 Installation
 
-### Requisitos
+### Requirements
 
 - Rust 1.70+
 - GTK4
-- libadwaita
+- libadwaita (optional - NotNative uses pure GTK4)
 
-### Fuentes (opcional, para Modo 8BIT)
+### Arch Linux (Recommended for Omarchy OS)
 
-Para usar el **Modo 8BIT** con fuentes retro, instala las fuentes incluidas:
+#### Using AUR (Recommended)
+
+```bash
+# Using yay
+yay -S notnative-app
+
+# Or using paru
+paru -S notnative-app
+```
+
+#### Manual Installation from AUR
+
+```bash
+git clone https://aur.archlinux.org/notnative-app.git
+cd notnative-app
+makepkg -si
+```
+
+#### From Source
+
+1. **Install dependencies:**
+
+```bash
+sudo pacman -S rust gtk4 base-devel
+```
+
+2. **Clone the repository:**
+
+```bash
+git clone https://github.com/k4ditano/notnative-app.git
+cd notnative-app
+```
+
+3. **Build and install:**
+
+```bash
+cargo build --release
+sudo ./install.sh
+```
+
+This will:
+- Build the optimized release binary
+- Install to `/usr/local/bin/notnative-app`
+- Install desktop entry for application launcher
+- Install icon/logo assets
+
+### Other Linux Distributions
+
+#### Ubuntu/Debian
+
+```bash
+sudo apt install libgtk-4-dev build-essential
+cargo build --release
+sudo ./install.sh
+```
+
+#### Fedora
+
+```bash
+sudo dnf install gtk4-devel gcc
+cargo build --release
+sudo ./install.sh
+```
+
+### Fonts (Optional - for 8BIT Mode)
+
+To use **8BIT Mode** with retro fonts, install the included fonts:
 
 ```bash
 ./install-fonts.sh
 ```
 
-Esto instalará VT323 (fuente de terminal retro) en tu sistema. Ver `fonts/README.md` para más detalles.
+This will install VT323 (retro terminal font) on your system. See `fonts/README.md` for more details.
 
-### Compilar
-
-```bash
-cargo build --release
-```
-
-### Ejecutar
+### Running
 
 ```bash
+# If installed system-wide
+notnative-app
+
+# Or from source
 cargo run --release
 ```
 
-## ⌨️ Atajos de teclado
+## ⌨️ Keyboard Shortcuts
 
-### Modo Normal (predeterminado)
+### Normal Mode (default)
 
-- `i` - Entrar en modo INSERT
-- `:` - Entrar en modo COMMAND
-- `h/j/k/l` - Mover cursor (izq/abajo/arriba/der)
-- `0` - Inicio de línea
-- `$` - Fin de línea
-- `gg` - Inicio del documento
-- `G` - Fin del documento
-- `x` - Eliminar carácter
-- `dd` - Eliminar línea
-- `u` - Deshacer
-- `Ctrl+z` - Deshacer
-- `Ctrl+r` - Rehacer
-- `Ctrl+s` - Guardar
-- `Ctrl+d` - Cambiar tema
+- `i` - Enter INSERT mode
+- `:` - Enter COMMAND mode
+- `h/j/k/l` - Move cursor (left/down/up/right)
+- `0` - Beginning of line
+- `$` - End of line
+- `gg` - Beginning of document
+- `G` - End of document
+- `x` - Delete character
+- `dd` - Delete line
+- `u` - Undo
+- `Ctrl+z` - Undo
+- `Ctrl+r` - Redo
+- `Ctrl+s` - Save
+- `Ctrl+d` - Toggle theme
+- `Ctrl+e` - Toggle sidebar
 
-### Modo Insert
+### Insert Mode
 
-- `Esc` - Volver a modo NORMAL
-- `Ctrl+s` - Guardar
-- Todas las teclas normales insertan texto
+- `Esc` - Return to NORMAL mode
+- `Ctrl+s` - Save
+- All normal keys insert text
 
-### Modo Command
+### Command Mode
 
-- `:w` - Guardar
-- `:q` - Salir
-- `:wq` - Guardar y salir
-- `:q!` - Salir sin guardar
+- `:w` - Save
+- `:q` - Quit
+- `:wq` - Save and quit
+- `:q!` - Quit without saving
 
-### Interfaz
+### Interface
 
-- **Botón 8BIT** (footer) - Activa/desactiva el modo retro con fuentes pixeladas
-- **Menú Ajustes** (⚙️) - Acceso a preferencias y configuración
-- **Indicador de modo** (footer izquierda) - Muestra el modo actual (NORMAL/INSERT)
-- **Estadísticas** (footer derecha) - Líneas, palabras y cambios sin guardar
+- **8BIT Button** (footer) - Toggle retro mode with pixelated fonts
+- **Settings Menu** (⚙️) - Access preferences and configuration
+- **Mode indicator** (footer left) - Shows current mode (NORMAL/INSERT)
+- **Statistics** (footer right) - Lines, words, and unsaved changes
 
-## 🏗️ Arquitectura
+## 🏗️ Architecture
 
 ```
 src/
-├── main.rs              # Bootstrap, GTK init, carga de temas Omarchy
-├── app.rs               # Lógica principal de UI con Relm4 (2500+ líneas)
+├── main.rs              # Bootstrap, GTK init, Omarchy theme loading
+├── app.rs               # Main UI logic with Relm4 (2500+ lines)
 └── core/
-    ├── mod.rs           # Exports públicos del módulo
-    ├── note_buffer.rs   # Buffer de texto con ropey + undo/redo
-    ├── command.rs       # Parser de comandos vim y acciones
-    ├── editor_mode.rs   # Modos: Normal, Insert, Command, Visual
-    ├── note_file.rs     # Gestión de archivos .md y directorio de notas
-    ├── markdown.rs      # Parser markdown con pulldown-cmark
-    └── notes_config.rs  # Configuración (próximamente)
+    ├── mod.rs           # Public module exports
+    ├── note_buffer.rs   # Text buffer with ropey + undo/redo
+    ├── command.rs       # Vim command parser and actions
+    ├── editor_mode.rs   # Modes: Normal, Insert, Command, Visual
+    ├── note_file.rs     # .md file management and notes directory
+    ├── markdown.rs      # Markdown parser with pulldown-cmark
+    └── notes_config.rs  # Configuration (coming soon)
 ```
 
-### Sistema de archivos
+### File System
 
-- **Directorio base**: `~/.local/share/notnative/notes/`
-- **Formato**: Cada nota es un archivo `.md` independiente
-- **Estructura**: Soporte básico para carpetas (mejoras pendientes)
-- **Backup-friendly**: Los archivos son estándar markdown legible
-- **Autoguardado**: Cada 5 segundos si hay cambios
+- **Base directory**: `~/.local/share/notnative/notes/`
+- **Format**: Each note is an independent `.md` file
+- **Structure**: Basic folder support (improvements pending)
+- **Backup-friendly**: Files are standard readable markdown
+- **Autosave**: Every 5 seconds if there are changes
 
-### Stack tecnológico
+### Technology Stack
 
-- **Rust 2024 Edition** - Lenguaje base
-- **GTK4** - Toolkit nativo (sin libadwaita)
-- **Relm4 0.10** - Framework reactivo para GTK4
-- **ropey 1.6** - Estructura de datos rope para edición de texto eficiente
-- **pulldown-cmark 0.10** - Parser markdown robusto con offsets
-- **notify 6** - Watcher para cambios de tema del sistema
-- **serde + serde_json** - Serialización (para config futura)
-- **dirs 5** - Manejo de directorios del sistema
+- **Rust 2024 Edition** - Base language
+- **GTK4** - Native toolkit (without libadwaita)
+- **Relm4 0.10** - Reactive framework for GTK4
+- **ropey 1.6** - Rope data structure for efficient text editing
+- **pulldown-cmark 0.10** - Robust markdown parser with offsets
+- **notify 6** - Watcher for system theme changes
+- **serde + serde_json** - Serialization (for future config)
+- **dirs 5** - System directory management
 - **anyhow + thiserror** - Error handling
 
-## 🎨 Diseño
+## 🎨 Design Philosophy
 
-NotNative está diseñado para ser:
+NotNative is designed to be:
 
-1. **Rápido**: Operaciones de edición en O(log n), sin bloqueos en la UI
-2. **Nativo**: Integración completa con el escritorio (Wayland, portales, D-Bus)
-3. **Minimalista**: Interfaz limpia, navegación solo con teclado
-4. **Extensible**: Arquitectura modular preparada para plugins
+1. **Fast**: O(log n) editing operations, no UI blocking
+2. **Native**: Full desktop integration (Wayland, portals, D-Bus)
+3. **Minimalist**: Clean interface, keyboard-only navigation
+4. **Extensible**: Modular architecture ready for plugins
+5. **Omarchy-first**: Built specifically for Omarchy OS theme integration
 
-## 🔧 Desarrollo
+## 🔧 Development
 
 ### Tests
 
@@ -189,188 +280,301 @@ NotNative está diseñado para ser:
 cargo test
 ```
 
-### Estructura del buffer
+### Buffer Structure
 
-El `NoteBuffer` usa `ropey::Rope` internamente:
-- Inserciones/eliminaciones: O(log n)
-- Conversiones línea↔carácter: O(log n)
-- Acceso a líneas: O(log n)
-- Undo/redo con stack de operaciones (historial de 1000)
+`NoteBuffer` uses `ropey::Rope` internally:
+- Insert/delete operations: O(log n)
+- Line↔character conversions: O(log n)
+- Line access: O(log n)
+- Undo/redo with operation stack (1000 operation history)
 
-### Sistema de comandos
+### Command System
 
 ```rust
 KeyPress → CommandParser → EditorAction → NoteBuffer → sync_to_view()
 ```
 
-Flujo:
-1. `EventControllerKey` captura teclas en `text_view`
-2. `CommandParser` convierte tecla + modo en `EditorAction`
-3. `MainApp::execute_action()` modifica el `NoteBuffer`
-4. `sync_to_view()` actualiza GTK `TextBuffer`
-5. En modo Normal: aplica estilos markdown y renderiza texto limpio
-6. En modo Insert: muestra texto crudo con símbolos
+Flow:
+1. `EventControllerKey` captures keys in `text_view`
+2. `CommandParser` converts key + mode into `EditorAction`
+3. `MainApp::execute_action()` modifies the `NoteBuffer`
+4. `sync_to_view()` updates GTK `TextBuffer`
+5. In Normal mode: applies markdown styles and renders clean text
+6. In Insert mode: shows raw text with symbols
 
-### Renderizado Markdown
+### Markdown Rendering
 
-Modo dual de visualización:
+Dual visualization mode:
 
-- **Modo Normal**: Vista limpia
-  - Los símbolos markdown se ocultan (`**`, `#`, `` ` ``, etc.)
-  - Se aplican estilos GTK TextTags (negrita, cursiva, headings)
-  - Links son clickeables con cursor pointer
-  - Mapeo de posiciones buffer ↔ texto mostrado
+- **Normal Mode**: Clean view
+  - Markdown symbols are hidden (`**`, `#`, `` ` ``, etc.)
+  - GTK TextTags styles applied (bold, italic, headings)
+  - Links are clickable with pointer cursor
+  - Position mapping buffer ↔ displayed text
 
-- **Modo Insert**: Vista cruda
-  - Todos los símbolos markdown visibles
-  - Sin estilos aplicados (texto plano)
-  - Permite editar el markdown directamente
+- **Insert Mode**: Raw view
+  - All markdown symbols visible
+  - No styles applied (plain text)
+  - Allows direct markdown editing
 
-### Integración con Tema del Sistema
+### Omarchy Theme Integration
 
-NotNative se integra con el sistema de temas Omarchy:
+NotNative integrates with the Omarchy theme system:
 
-1. **Carga inicial**: Lee CSS de `~/.config/omarchy/current/theme/*.css`
-2. **Watcher**: Thread de `notify` detecta cambios en el symlink
-3. **Recarga**: Aplica nuevo CSS y actualiza colores de TextTags
-4. **Adaptación**: Los colores de links y código se extraen del tema
+1. **Initial load**: Reads CSS from `~/.config/omarchy/current/theme/*.css`
+2. **Watcher**: `notify` thread detects symlink changes
+3. **Reload**: Applies new CSS and updates TextTag colors
+4. **Adaptation**: Link and code colors extracted from theme
 
-## � TODO - Próximos Pasos
+This seamless integration means NotNative always matches your Omarchy desktop appearance, providing a truly unified experience.
 
-### 🔥 Prioridad Alta (En Desarrollo Activo)
+## 📋 Roadmap
 
-#### 1. Drag & Drop en Sidebar ⚡ NEXT
-- [ ] Implementar `gtk::DragSource` en filas del ListBox
-- [ ] Implementar `gtk::DropTarget` para recibir drops
-- [ ] Detectar drop entre notas (reordenar)
-- [ ] Detectar drop sobre carpetas (mover nota a carpeta)
-- [ ] Detectar drop de carpeta sobre carpeta (anidar)
-- [ ] Actualizar estructura de archivos en disco
-- [ ] Animaciones visuales durante el drag
-- [ ] Feedback visual (placeholder, highlight)
-- [ ] Persistir nuevo orden en metadata
+### 🔥 High Priority (Active Development)
 
-#### 2. Sistema de Indexación con SQLite ⚡ NEXT
-- [ ] Crear esquema de base de datos:
-  - Tabla `notes` (id, name, path, content, created_at, updated_at)
-  - Tabla `tags` (id, name)
-  - Tabla `note_tags` (note_id, tag_id)
-  - Tabla virtual FTS5 para full-text search
-- [ ] Implementar módulo `core/database.rs`
-- [ ] Indexar notas existentes al iniciar
-- [ ] Watcher para actualizar índice en cambios de archivos
-- [ ] Re-indexar al guardar nota
-- [ ] Migración y versionado de esquema
+#### 1. Drag & Drop in Sidebar ⚡ NEXT
+- [ ] Implement `gtk::DragSource` in ListBox rows
+- [ ] Implement `gtk::DropTarget` to receive drops
+- [ ] Detect drop between notes (reorder)
+- [ ] Detect drop on folders (move note to folder)
+- [ ] Detect folder on folder drop (nesting)
+- [ ] Update file structure on disk
+- [ ] Visual animations during drag
+- [ ] Visual feedback (placeholder, highlight)
+- [ ] Persist new order in metadata
 
-#### 3. Búsqueda Full-Text ⚡ NEXT
-- [ ] Barra de búsqueda en header del sidebar
-- [ ] Widget Entry con botón de búsqueda
-- [ ] Query a SQLite FTS5
-- [ ] Mostrar resultados en sidebar
-- [ ] Resaltar coincidencias en resultados
-- [ ] Búsqueda por:
-  - Nombre de nota
-  - Contenido
+#### 2. SQLite Indexing System ⚡ NEXT
+- [ ] Create database schema:
+  - `notes` table (id, name, path, content, created_at, updated_at)
+  - `tags` table (id, name)
+  - `note_tags` table (note_id, tag_id)
+  - FTS5 virtual table for full-text search
+- [ ] Implement `core/database.rs` module
+- [ ] Index existing notes on startup
+- [ ] Watcher to update index on file changes
+- [ ] Re-index on note save
+- [ ] Schema migration and versioning
+
+#### 3. Full-Text Search ⚡ NEXT
+- [ ] Search bar in sidebar header
+- [ ] Entry widget with search button
+- [ ] Query SQLite FTS5
+- [ ] Display results in sidebar
+- [ ] Highlight matches in results
+- [ ] Search by:
+  - Note name
+  - Content
   - Tags
-  - Fecha (creación/modificación)
-- [ ] Filtrado en tiempo real (debounce)
-- [ ] Mostrar snippets de contexto
+  - Date (creation/modification)
+- [ ] Real-time filtering (debounce)
+- [ ] Show context snippets
 
-#### 4. Sistema de Tags con Autocompletado ⚡ NEXT
-- [ ] Parsear frontmatter YAML en notas:
+#### 4. Tag System with Autocompletion ⚡ NEXT
+- [ ] Parse YAML frontmatter in notes:
   ```yaml
   ---
   tags: [tag1, tag2, tag3]
   ---
   ```
-- [ ] Almacenar tags en base de datos
-- [ ] Widget de entrada de tags en header/footer
-- [ ] Autocompletado con `gtk::EntryCompletion`
-- [ ] Sugerencias basadas en tags existentes
-- [ ] Vista de tags más usados
-- [ ] Filtrar sidebar por tag
-- [ ] Color coding para tags (opcional)
+- [ ] Store tags in database
+- [ ] Tag input widget in header/footer
+- [ ] Autocompletion with `gtk::EntryCompletion`
+- [ ] Suggestions based on existing tags
+- [ ] Most used tags view
+- [ ] Filter sidebar by tag
+- [ ] Color coding for tags (optional)
 
-#### 5. Completar Menú Contextual
-- [ ] Implementar renombrado de notas (ya hay estructura, falta lógica)
-- [ ] Implementar eliminación de notas (base implementada, refinar)
-- [ ] Añadir confirmación de eliminación (dialog)
-- [ ] Actualizar sidebar después de renombrar/eliminar
-- [ ] Manejar carpetas en el menú contextual
-- [ ] Crear nueva carpeta desde menú
+#### 5. Complete Context Menu
+- [ ] Implement note renaming (structure exists, logic pending)
+- [ ] Implement note deletion (base implemented, refine)
+- [ ] Add deletion confirmation (dialog)
+- [ ] Update sidebar after rename/delete
+- [ ] Handle folders in context menu
+- [ ] Create new folder from menu
 
-#### 6. Mejorar Renderizado Markdown
-- [ ] Syntax highlighting en bloques de código (usar `syntect` o similar)
-- [ ] Soporte para imágenes inline
-- [ ] Tablas markdown
-- [ ] Listas anidadas y numeradas
+#### 6. Improve Markdown Rendering
+- [ ] Syntax highlighting in code blocks (use `syntect` or similar)
+- [ ] Inline image support
+- [ ] Markdown tables
+- [ ] Nested and numbered lists
 - [ ] Checkboxes (`- [ ]` / `- [x]`)
-- [ ] Mejorar colores de links según tema actual
+- [ ] Improve link colors based on current theme
 
-### ⚡ Prioridad Media (UX y Pulido)
+### ⚡ Medium Priority (UX & Polish)
 
-#### 5. Vista Previa Markdown Opcional
-- [ ] Panel lateral con vista previa renderizada
-- [ ] Toggle para mostrar/ocultar preview
-- [ ] Scroll sincronizado entre editor y preview
-- [ ] Usar WebKit o widget nativo para renderizado
+#### 7. Optional Markdown Preview
+- [ ] Side panel with rendered preview
+- [ ] Toggle to show/hide preview
+- [ ] Synchronized scroll between editor and preview
+- [ ] Use WebKit or native widget for rendering
 
-#### 6. Atajos de Teclado Adicionales
-- [ ] `Ctrl+N` - Nueva nota (alternativa al diálogo)
-- [ ] `Ctrl+F` - Buscar en nota actual
-- [ ] `Ctrl+Shift+F` - Buscar en todas las notas
-- [ ] `/` en modo Normal - Quick search
-- [ ] `:e <nombre>` - Abrir nota por nombre
+#### 8. Additional Keyboard Shortcuts
+- [ ] `Ctrl+N` - New note (alternative to dialog)
+- [ ] `Ctrl+F` - Search in current note
+- [ ] `Ctrl+Shift+F` - Search in all notes
+- [ ] `/` in Normal mode - Quick search
+- [ ] `:e <name>` - Open note by name
 
-#### 7. Configuración y Preferencias
-- [ ] Diálogo de preferencias funcional (actualmente solo placeholder)
-- [ ] Configurar directorio de notas
-- [ ] Configurar intervalo de autoguardado
-- [ ] Elegir tema (light/dark/system)
-- [ ] Configurar fuente y tamaño
-- [ ] Habilitar/deshabilitar markdown rendering
+#### 9. Configuration & Preferences
+- [ ] Functional preferences dialog (currently placeholder)
+- [ ] Configure notes directory
+- [ ] Configure autosave interval
+- [ ] Choose theme (light/dark/system)
+- [ ] Configure font and size
+- [ ] Enable/disable markdown rendering
 
-#### 8. Ventana "Acerca de"
-- [ ] Diálogo con información del proyecto
-- [ ] Versión actual
-- [ ] Licencia (MIT)
-- [ ] Créditos y enlaces
+#### 10. "About" Window
+- [ ] Dialog with project information
+- [ ] Current version
+- [ ] License (MIT)
+- [ ] Credits and links
 
-### 🎨 Prioridad Baja (Nice-to-Have)
+### 🎨 Low Priority (Nice-to-Have)
 
-#### 9. Modo 8BIT (Completar o Remover)
-- [ ] Re-habilitar botón 8BIT (actualmente comentado)
-- [ ] O eliminar completamente si no es necesario
-- [ ] Considerar como Easter egg o feature opcional
+#### 11. 8BIT Mode (Complete or Remove)
+- [ ] Re-enable 8BIT button (currently commented)
+- [ ] Or remove completely if not needed
+- [ ] Consider as Easter egg or optional feature
 
-#### 10. Exportación
-- [ ] Exportar nota actual a HTML
-- [ ] Exportar nota actual a PDF
-- [ ] Exportar todas las notas (zip)
+#### 12. Export
+- [ ] Export current note to HTML
+- [ ] Export current note to PDF
+- [ ] Export all notes (zip)
 
-### 🚀 Futuro (v0.2+)
+### 🚀 Future (v0.2+)
 
-#### 11. Integración Hyprland
-- [ ] Layer-shell para modo overlay
-- [ ] IPC con Hyprland
-- [ ] Shortcuts globales del compositor
-- [ ] Modo "quick note" flotante
+#### 13. Hyprland Integration
+- [ ] Layer-shell for overlay mode
+- [ ] IPC with Hyprland
+- [ ] Compositor global shortcuts
+- [ ] Floating "quick note" mode
 
-#### 12. API de IA (OpenRouter)
-- [ ] Integración con OpenRouter API
-- [ ] Resúmenes automáticos de notas largas
-- [ ] Chat con contexto de notas
-- [ ] Sugerencias y autocompletado inteligente
+#### 14. AI API (OpenRouter)
+- [ ] OpenRouter API integration
+- [ ] Automatic summaries of long notes
+- [ ] Chat with note context
+- [ ] Intelligent suggestions and autocompletion
 
-#### 13. MCP (Model Context Protocol)
-- [ ] Server MCP para exponer notas
-- [ ] Integración con herramientas MCP
-- [ ] Extensiones vía MCP
+#### 15. MCP (Model Context Protocol)
+- [ ] MCP server to expose notes
+- [ ] Integration with MCP tools
+- [ ] Extensions via MCP
 
-#### 14. Sincronización (Opcional)
-- [ ] Git sync básico
-- [ ] Sync con servicios cloud (Nextcloud, Syncthing)
-- [ ] Detección y resolución de conflictos
+#### 16. Synchronization (Optional)
+- [ ] Basic Git sync
+- [ ] Sync with cloud services (Nextcloud, Syncthing)
+- [ ] Conflict detection and resolution
+
+---
+
+## 🗓️ Version Roadmap
+
+- [x] **v0.1** - Functional editor with markdown, sidebar and folders ✅
+- [ ] **v0.2** - Drag & drop, SQLite indexing, search, tags 🔥 **IN DEVELOPMENT**
+- [ ] **v0.3** - Preview, export, preferences
+- [ ] **v0.4** - Hyprland integration, global shortcuts
+- [ ] **v0.5** - AI API (OpenRouter)
+- [ ] **v0.6** - MCP integration
+- [ ] **v0.7** - Cloud synchronization
+- [ ] **v1.0** - Stabilization and release
+
+## 🐛 Known Issues & Troubleshooting
+
+### Theme Not Loading
+
+If the Omarchy theme is not applied after installation from AUR:
+
+1. **Verify Omarchy theme files exist:**
+   ```bash
+   ls ~/.config/omarchy/current/theme/
+   ```
+   You should see files like `walker.css`, `waybar.css`, and `swayosd.css`.
+
+2. **Check if NotNative detects the theme:**
+   Run from terminal to see debug messages:
+   ```bash
+   notnative-app
+   ```
+   You should see: `✓ Tema Omarchy cargado desde ~/.config/omarchy/current/theme/`
+
+3. **If theme files don't exist:**
+   Install Omarchy theme system or create a symlink to your theme directory.
+
+### Bugs
+- [ ] Note renaming not implemented (structure ready, logic pending)
+- [ ] Context menu: parent/unparent may cause GTK warnings
+- [ ] Nested folders don't display correctly in sidebar
+- [ ] Folder deletion not implemented
+
+### Performance Improvements
+- [ ] Markdown rendering in separate thread for very long notes
+- [ ] Lazy loading of sidebar (load only visible notes)
+- [ ] Debounce on sidebar hover (avoid excessive loads)
+
+### UX/UI
+- [ ] Sidebar animation could be improved (consider libadwaita AnimatedPane)
+- [ ] Visual indicator when autosaving
+- [ ] Visual feedback when creating/deleting notes
+- [ ] Keyboard shortcuts don't appear in dialog (empty placeholder)
+
+### Refactoring
+- [ ] `app.rs` is too large (2500+ lines) - split into modules
+- [ ] Separate sidebar logic into independent Relm4 component
+- [ ] Extract markdown rendering to separate module
+- [ ] Improve error handling (more informative user messages)
+
+---
+
+## 📜 License
+
+MIT License - See [LICENSE](LICENSE) file for details.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please open an issue first to discuss major changes.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+---
+
+## 📊 Project Status
+
+**Current Version**: v0.1.0  
+**Last Updated**: November 2025  
+**Status**: Alpha - Functional but under active development  
+**Lines of Code**: ~4000 lines of Rust  
+**Tests**: Pending implementation
+
+---
+
+## 👨‍💻 Author
+
+**NotNative** is built with ❤️ by [k4ditano](https://github.com/k4ditano) @ [h2r](https://github.com/h2r)
+
+Designed specifically for [Omarchy OS](https://omarchy.org) - The next generation Linux distribution.
+
+---
+
+## 🙏 Acknowledgments
+
+- **Omarchy OS** - For providing the inspiration and theming system
+- **GTK Team** - For the excellent GTK4 toolkit
+- **Rust Community** - For the amazing ecosystem and tools
+- All contributors and users who help improve NotNative
+
+---
+
+<div align="center">
+
+**Made for power users who love speed and efficiency** ⚡
+
+[Report Bug](https://github.com/k4ditano/notnative-app/issues) · [Request Feature](https://github.com/k4ditano/notnative-app/issues) · [Documentation](https://github.com/k4ditano/notnative-app/wiki)
+
+</div>
 
 ---
 

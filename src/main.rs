@@ -45,13 +45,14 @@ fn load_theme_css() -> (String, bool) {
         format!("{}/swayosd.css", theme_dir),
     ];
 
-    let mut combined_css = String::new();
+    // Primero, cargamos y extraemos las variables de color de Omarchy
+    let mut omarchy_css = String::new();
     let mut theme_loaded = false;
 
     for css_file in &css_files {
         if let Ok(content) = std::fs::read_to_string(css_file) {
-            combined_css.push_str(&content);
-            combined_css.push('\n');
+            omarchy_css.push_str(&content);
+            omarchy_css.push('\n');
             theme_loaded = true;
         }
     }
@@ -76,6 +77,17 @@ fn load_theme_css() -> (String, bool) {
         .or_else(|| std::fs::read_to_string("assets/style.css").ok())
         .or_else(|| std::fs::read_to_string("./notnative-app/assets/style.css").ok());
 
+    // Combinamos los CSS: primero las variables de Omarchy, luego el CSS de la app
+    let mut combined_css = String::new();
+
+    // Agregar las variables de Omarchy al principio
+    if theme_loaded {
+        combined_css.push_str("/* Variables de color de Omarchy */\n");
+        combined_css.push_str(&omarchy_css);
+        combined_css.push('\n');
+    }
+
+    // Agregar el CSS de la aplicación
     if let Some(app_css_content) = app_css {
         combined_css.push_str(&app_css_content);
     }
@@ -92,14 +104,24 @@ fn main() -> anyhow::Result<()> {
     let (combined_css, theme_loaded) = load_theme_css();
     let theme_provider = gtk::CssProvider::new();
 
-    if theme_loaded || !combined_css.is_empty() {
+    if !combined_css.is_empty() {
         theme_provider.load_from_data(&combined_css);
         gtk::style_context_add_provider_for_display(
             &gtk::gdk::Display::default().expect("No se pudo obtener el display"),
             &theme_provider,
             gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
         );
-        println!("✓ Tema Omarchy cargado");
+
+        if theme_loaded {
+            println!("✓ Tema Omarchy cargado desde ~/.config/omarchy/current/theme/");
+        } else {
+            println!("⚠ Tema Omarchy no encontrado, usando estilos por defecto");
+        }
+
+        // Debug: mostrar tamaño del CSS cargado
+        println!("  CSS size: {} bytes", combined_css.len());
+    } else {
+        println!("⚠ No se pudo cargar ningún CSS");
     }
 
     // Usar GTK Application en lugar de Adwaita Application

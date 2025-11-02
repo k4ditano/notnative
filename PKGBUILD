@@ -1,6 +1,6 @@
-# Maintainer: Abel <tu-email@dominio.com>
+# Maintainer: k4ditano <k4ditano@h2r.es>
 pkgname=notnative-app
-pkgver=0.1.0
+pkgver=0.1.1
 pkgrel=1
 pkgdesc="Note-taking application with Vim-like keybindings"
 arch=('x86_64')
