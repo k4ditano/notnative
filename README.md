@@ -26,6 +26,20 @@ Built with ❤️ for [Omarchy OS](https://omarchy.org) by [k4ditano](https://gi
 - **Optimized for Wayland**: First-class support for modern Wayland compositors
 - **System Portals**: Full integration with Omarchy's D-Bus portals
 
+## 📸 Screenshots
+
+<div align="center">
+
+### YouTube Video Integration & Transcripts
+![YouTube Integration](screenshots/youtube-transcript.png)
+*Embed YouTube videos with automatic transcript extraction*
+
+### TODO Lists & Checkboxes
+![TODO Lists](screenshots/todo-checkboxes.png)
+*Interactive TODO lists with checkbox support - Markdown checkbox syntax with real-time rendering*
+
+</div>
+
 ## ✨ Features
 
 ### ✅ Implemented (v0.1)
@@ -40,7 +54,7 @@ Built with ❤️ for [Omarchy OS](https://omarchy.org) by [k4ditano](https://gi
 #### GTK4 Interface + Theming
 - **Native GTK4 interface** without libadwaita (pure GTK)
 - **Omarchy theme integration** - Auto-detects and adapts to system theme
-- **Theme watcher** - Automatic updates when you switch themes
+- **Real-time theme switching** - Automatically updates when you switch themes in Omarchy
 - **Optimized margins** - Improved visual spacing in TextView and HeaderBar
 - **Status bar** with mode indicator and real-time statistics
 
@@ -53,43 +67,61 @@ Built with ❤️ for [Omarchy OS](https://omarchy.org) by [k4ditano](https://gi
 - **Welcome note** - Automatically created on first run
 - **Dynamic title** - Window displays current note name
 
-#### Markdown Rendering
+#### Advanced Markdown Features
 - **Real-time markdown rendering** - Clean view without symbols in Normal mode
 - **Robust parser** with `pulldown-cmark` - Handles offsets correctly
-- **Syntax support**: 
+- **Rich syntax support**: 
   - Headings (`#`, `##`, `###`)
   - Bold (`**text**`) and Italic (`*text*`)
   - Inline code (`` `code` ``) and blocks (` ``` `)
   - Clickable links (`[text](url)`)
   - Lists (`-` with bullets `•`)
   - Blockquotes (`>`)
+  - **Checkboxes / TODO lists** (`- [ ]` / `- [x]`)
+  - **Images** - Inline image preview with click to open
 - **Dual mode**: 
   - Normal mode: Clean view without markdown symbols
   - Insert mode: Raw text with all symbols visible
 - **GTK TextTags styling** - Adapted to system theme
-- **Interactive links** - Click to open in browser, pointer cursor on hover
+- **Interactive elements** - Clickable links, images, and checkboxes
+
+#### YouTube Integration
+- **YouTube video embeds** - Paste YouTube URLs and see video preview
+- **Video transcription** - Automatic video transcript extraction
+- **Embedded player** - Watch videos directly in NotNative
+- **Transcript viewer** - Read and search through video transcripts
+- **Local server** - Built-in HTTP server for video playback on `localhost:8787`
+
+#### Database & Organization
+- **SQLite indexing** - Fast full-text search across all notes
+- **Tag system** - Organize notes with tags (YAML frontmatter support)
+- **Tag autocomplete** - Smart tag suggestions based on existing tags
+- **Folder hierarchy** - Nested folder support with expandable tree view
+- **Search & filter** - Find notes by content, tags, or filename
 
 #### Sidebar & Navigation
 - **Sliding sidebar** with smooth open/close animations
 - **Folder system** - Hierarchical note organization
-- **Expandable folders** - Click to expand/collapse
+- **Expandable folders** - Click to expand/collapse with visual feedback
+- **Drag & drop** - Reorder notes, move between folders, nest folders
 - **Keyboard navigation** - `j/k` to move, `l/Esc` to close
 - **Hover to load** - Hover over a note to load it automatically
-- **Context menu** - Right-click to rename/delete (in development)
+- **Context menu** - Right-click to rename/delete notes
 - **Shortcuts** - `Ctrl+E` to toggle, button in header
+
+#### Configuration & Preferences
+- **Preferences dialog** - Complete settings interface
+- **Notes directory** - Configure custom location for notes
+- **Autosave interval** - Customize automatic save frequency
+- **Theme selection** - Choose light/dark/system theme
+- **Font customization** - Configure font family and size
+- **Markdown toggle** - Enable/disable real-time rendering
 
 #### Keyboard & Events
 - **Keyboard events** integrated with command system
 - **Accent composition** - Full support for special characters (á, é, í, ó, ú, ñ)
 - **All special characters** work correctly (.,!?:;/etc)
-- **Global shortcuts**: `Ctrl+S` (save), `Ctrl+D` (toggle theme), `Ctrl+E` (sidebar)
-
-### 🚧 In Development
-
-- Drag & drop in sidebar (reorder notes, move between folders)
-- SQLite indexing system
-- Full-text search and note filtering
-- Tag system with autocompletion
+- **Global shortcuts**: `Ctrl+S` (save), `Ctrl+D` (toggle theme), `Ctrl+E` (sidebar), `Ctrl+F` (search), `Ctrl+Shift+F` (full-text search)
 
 ## 🚀 Installation
 
@@ -165,16 +197,6 @@ cargo build --release
 sudo ./install.sh
 ```
 
-### Fonts (Optional - for 8BIT Mode)
-
-To use **8BIT Mode** with retro fonts, install the included fonts:
-
-```bash
-./install-fonts.sh
-```
-
-This will install VT323 (retro terminal font) on your system. See `fonts/README.md` for more details.
-
 ### Running
 
 ```bash
@@ -204,6 +226,8 @@ cargo run --release
 - `Ctrl+s` - Save
 - `Ctrl+d` - Toggle theme
 - `Ctrl+e` - Toggle sidebar
+- `Ctrl+f` - Search in current note
+- `Ctrl+Shift+f` - Search in all notes (full-text search)
 
 ### Insert Mode
 
@@ -220,7 +244,6 @@ cargo run --release
 
 ### Interface
 
-- **8BIT Button** (footer) - Toggle retro mode with pixelated fonts
 - **Settings Menu** (⚙️) - Access preferences and configuration
 - **Mode indicator** (footer left) - Shows current mode (NORMAL/INSERT)
 - **Statistics** (footer right) - Lines, words, and unsaved changes
@@ -331,28 +354,47 @@ This seamless integration means NotNative always matches your Omarchy desktop ap
 
 ### 🔥 High Priority (Active Development)
 
-#### 1. Drag & Drop in Sidebar ⚡ NEXT
-- [ ] Implement `gtk::DragSource` in ListBox rows
-- [ ] Implement `gtk::DropTarget` to receive drops
-- [ ] Detect drop between notes (reorder)
-- [ ] Detect drop on folders (move note to folder)
-- [ ] Detect folder on folder drop (nesting)
-- [ ] Update file structure on disk
-- [ ] Visual animations during drag
-- [ ] Visual feedback (placeholder, highlight)
-- [ ] Persist new order in metadata
+#### 1. Drag & Drop in Sidebar ✅ IMPLEMENTED
+- [x] Implement `gtk::DragSource` in ListBox rows
+- [x] Implement `gtk::DropTarget` to receive drops
+- [x] Detect drop between notes (reorder)
+- [x] Detect drop on folders (move note to folder)
+- [x] Detect folder on folder drop (nesting)
+- [x] Update file structure on disk
+- [x] Visual animations during drag
+- [x] Visual feedback (placeholder, highlight)
+- [x] Persist new order in metadata
 
-#### 2. SQLite Indexing System ⚡ NEXT
-- [ ] Create database schema:
-  - `notes` table (id, name, path, content, created_at, updated_at)
-  - `tags` table (id, name)
-  - `note_tags` table (note_id, tag_id)
+### 🔥 High Priority
+
+#### 2. SQLite Indexing System ✅ IMPLEMENTED
+- [x] Create database module (`src/core/database.rs`)
+- [x] SQLite schema:
+  - `notes` table (id, path, name, content, tags, created_at, modified_at)
   - FTS5 virtual table for full-text search
-- [ ] Implement `core/database.rs` module
-- [ ] Index existing notes on startup
-- [ ] Watcher to update index on file changes
-- [ ] Re-index on note save
-- [ ] Schema migration and versioning
+- [x] Index all notes on startup
+- [x] Incremental updates:
+  - Add note on creation
+  - Update note on save
+- [x] Watcher to update index on file changes
+- [x] Re-index on note save
+- [x] Schema migration and versioning
+
+#### 3. Full-Text Search ✅ IMPLEMENTED
+- [x] Search bar in sidebar header
+- [x] Entry widget with search button
+- [x] Query SQLite FTS5
+- [x] Display results in sidebar
+- [x] Highlight matches in results
+- [x] Search by:
+  - Note name
+  - Content
+  - Tags
+  - Date (creation/modification)
+- [x] Real-time filtering (debounce)
+- [x] Show context snippets
+
+#### 4. Tag System with Autocompletion ✅ IMPLEMENTED
 
 #### 3. Full-Text Search ⚡ NEXT
 - [ ] Search bar in sidebar header
@@ -368,19 +410,19 @@ This seamless integration means NotNative always matches your Omarchy desktop ap
 - [ ] Real-time filtering (debounce)
 - [ ] Show context snippets
 
-#### 4. Tag System with Autocompletion ⚡ NEXT
-- [ ] Parse YAML frontmatter in notes:
+#### 4. Tag System with Autocompletion ✅ IMPLEMENTED
+- [x] Parse YAML frontmatter in notes:
   ```yaml
   ---
   tags: [tag1, tag2, tag3]
   ---
   ```
-- [ ] Store tags in database
-- [ ] Tag input widget in header/footer
-- [ ] Autocompletion with `gtk::EntryCompletion`
-- [ ] Suggestions based on existing tags
-- [ ] Most used tags view
-- [ ] Filter sidebar by tag
+- [x] Store tags in database
+- [x] Tag input widget in header/footer
+- [x] Autocompletion with `gtk::EntryCompletion`
+- [x] Suggestions based on existing tags
+- [x] Most used tags view
+- [x] Filter sidebar by tag
 - [ ] Color coding for tags (optional)
 
 #### 5. Complete Context Menu
@@ -414,13 +456,13 @@ This seamless integration means NotNative always matches your Omarchy desktop ap
 - [ ] `/` in Normal mode - Quick search
 - [ ] `:e <name>` - Open note by name
 
-#### 9. Configuration & Preferences
-- [ ] Functional preferences dialog (currently placeholder)
-- [ ] Configure notes directory
-- [ ] Configure autosave interval
-- [ ] Choose theme (light/dark/system)
-- [ ] Configure font and size
-- [ ] Enable/disable markdown rendering
+#### 9. Configuration & Preferences ✅ IMPLEMENTED
+- [x] Functional preferences dialog
+- [x] Configure notes directory
+- [x] Configure autosave interval
+- [x] Choose theme (light/dark/system)
+- [x] Configure font and size
+- [x] Enable/disable markdown rendering
 
 #### 10. "About" Window
 - [ ] Dialog with project information
@@ -430,12 +472,7 @@ This seamless integration means NotNative always matches your Omarchy desktop ap
 
 ### 🎨 Low Priority (Nice-to-Have)
 
-#### 11. 8BIT Mode (Complete or Remove)
-- [ ] Re-enable 8BIT button (currently commented)
-- [ ] Or remove completely if not needed
-- [ ] Consider as Easter egg or optional feature
-
-#### 12. Export
+#### 11. Export
 - [ ] Export current note to HTML
 - [ ] Export current note to PDF
 - [ ] Export all notes (zip)
@@ -468,13 +505,13 @@ This seamless integration means NotNative always matches your Omarchy desktop ap
 
 ## 🗓️ Version Roadmap
 
-- [x] **v0.1** - Functional editor with markdown, sidebar and folders ✅
-- [ ] **v0.2** - Drag & drop, SQLite indexing, search, tags 🔥 **IN DEVELOPMENT**
-- [ ] **v0.3** - Preview, export, preferences
-- [ ] **v0.4** - Hyprland integration, global shortcuts
-- [ ] **v0.5** - AI API (OpenRouter)
-- [ ] **v0.6** - MCP integration
-- [ ] **v0.7** - Cloud synchronization
+- [x] **v0.1.0** - Functional editor with markdown, sidebar and folders ✅
+- [x] **v0.1.1** - SQLite indexing, full-text search, tags, YouTube integration, TODO checkboxes, images, drag & drop, preferences ✅ **CURRENT**
+- [ ] **v0.2** - Export, preview improvements, about dialog
+- [ ] **v0.3** - Hyprland integration, global shortcuts
+- [ ] **v0.4** - AI API (OpenRouter)
+- [ ] **v0.5** - MCP integration
+- [ ] **v0.6** - Cloud synchronization
 - [ ] **v1.0** - Stabilization and release
 
 ## 🐛 Known Issues & Troubleshooting
@@ -597,7 +634,7 @@ Contributions are welcome! Please open an issue first to discuss major changes.
 
 **Current Version**: v0.1.1  
 **Last Updated**: November 2025  
-**Status**: Alpha - Functional but under active development  
+**Status**: Alpha - Feature-rich with YouTube integration, full-text search, drag & drop, and preferences  
 **Lines of Code**: ~4000 lines of Rust  
 **Tests**: 27 passing tests
 
