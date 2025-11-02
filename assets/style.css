@@ -700,20 +700,22 @@ popover.tags-popover list > row {
   padding: 20px;
 }
 
-/* Estilos para el reproductor de música */
+/* Estilos para el reproductor de música - mismo estilo que otros popovers */
 popover.music-player {
   background-color: @base;
+  background-image: none;
+  color: @text;
   border: 1px solid @border;
   border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   padding: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 }
 
 popover.music-player > contents {
   background-color: transparent;
+  background-image: none;
   border: none;
   padding: 0;
-  box-shadow: none;
 }
 
 popover.music-player > arrow {
@@ -722,9 +724,10 @@ popover.music-player > arrow {
 }
 
 popover.music-player box {
-  background: transparent;
+  background-color: transparent;
+  background-image: none;
   border: none;
-  box-shadow: none;
+  min-width: 350px;
 }
 
 popover.music-player .music-title {
@@ -734,11 +737,18 @@ popover.music-player .music-title {
 }
 
 popover.music-player searchentry {
-  background: alpha(@base, 0.6);
+  background-color: alpha(@base, 0.8);
+  background-image: none;
   border: 1px solid @border;
   border-radius: 6px;
   padding: 8px 12px;
   color: @text;
+  margin: 4px 0;
+}
+
+popover.music-player searchentry > text {
+  background-color: transparent;
+  background-image: none;
 }
 
 popover.music-player list.music-results,
@@ -795,26 +805,34 @@ popover.music-player listbox.music-results > row:hover {
   }
 }
 
-/* Botones del reproductor con mejor feedback visual */
+/* Botones del reproductor - estilo compacto consistente con otros popovers */
 popover.music-player button {
+  background-color: transparent;
+  background-image: none;
+  color: @text;
+  border: none;
   min-height: 32px;
   min-width: 32px;
   padding: 6px;
-  border-radius: 50%;
+  border-radius: 4px;
   transition: all 150ms ease;
+  box-shadow: none;
 }
 
 popover.music-player button:hover {
-  background: alpha(@selected-text, 0.15);
-  transform: scale(1.05);
+  background-color: alpha(@selected-text, 0.15);
+  background-image: none;
 }
 
 popover.music-player button:active {
-  transform: scale(0.95);
+  background-color: alpha(@selected-text, 0.25);
+  background-image: none;
 }
 
 popover.music-player separator {
-  background: @border;
-  min-width: 1px;
-  min-height: 20px;
+  background-color: @border;
+  background-image: none;
+  margin: 6px 0;
+  min-height: 1px;
+  opacity: 0.3;
 }
