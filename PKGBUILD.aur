@@ -10,15 +10,8 @@ depends=('gtk4' 'webkitgtk-6.0' 'libadwaita' 'gtksourceview5' 'libpulse' 'sqlite
 makedepends=('cargo' 'rust' 'git' 'pkgconf')
 source=(
     "$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz"
-    "disable-bundled-sqlite.patch"
 )
-sha256sums=('SKIP'
-            'SKIP')
-
-prepare() {
-    cd "$pkgname-$pkgver"
-    patch -Np1 -i "$srcdir/disable-bundled-sqlite.patch"
-}
+sha256sums=('SKIP')
 
 build() {
     cd "$pkgname-$pkgver"
