@@ -1,4 +1,3 @@
-````markdown
 # NotNative
 
 <div align="center">
@@ -578,58 +577,53 @@ Designed specifically for [Omarchy OS](https://omarchy.org) - The next generatio
 
 ---
 
-## 📝 Roadmap General
+## � License
 
-- [x] **v0.1** - Editor funcional con markdown, sidebar y carpetas ✅
-- [ ] **v0.2** - Drag & drop, indexación SQLite, búsqueda, tags 🔥 **EN DESARROLLO**
-- [ ] **v0.3** - Vista previa, exportación, preferencias
-- [ ] **v0.4** - Integración Hyprland, shortcuts globales
-- [ ] **v0.5** - API de IA (OpenRouter)
-- [ ] **v0.6** - MCP integration
-- [ ] **v0.7** - Sincronización cloud
-- [ ] **v1.0** - Estabilización y release
+MIT License - See [LICENSE](LICENSE) file for details.
 
-## � Issues Conocidos y Mejoras Pendientes
+## 🤝 Contributing
 
-### Bugs
-- [ ] Renombrado de notas no implementado (estructura lista, falta lógica)
-- [ ] Menú contextual: parent/unparent puede causar warnings en GTK
-- [ ] Carpetas anidadas no se visualizan correctamente en sidebar
-- [ ] Eliminar carpeta no está implementado
+Contributions are welcome! Please open an issue first to discuss major changes.
 
-### Mejoras de Performance
-- [ ] Renderizado markdown en thread separado para notas muy largas
-- [ ] Lazy loading del sidebar (cargar solo notas visibles)
-- [ ] Debounce en hover del sidebar (evitar cargas excesivas)
-
-### UX/UI
-- [ ] Animación de sidebar mejorable (considerar libadwaita AnimatedPane)
-- [ ] Indicador visual cuando se guarda automáticamente
-- [ ] Feedback visual al crear/eliminar notas
-- [ ] Atajos de teclado no aparecen en diálogo (placeholder vacío)
-
-### Refactoring
-- [ ] `app.rs` es muy grande (2500+ líneas) - dividir en módulos
-- [ ] Separar lógica de sidebar a componente Relm4 independiente
-- [ ] Extraer renderizado markdown a módulo separado
-- [ ] Mejorar manejo de errores (más mensajes informativos al usuario)
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ---
 
-## �📜 Licencia
+## 📊 Project Status
 
-MIT
-
-## 🤝 Contribuir
-
-Las contribuciones son bienvenidas. Por favor, abre un issue primero para discutir cambios mayores.
+**Current Version**: v0.1.1  
+**Last Updated**: November 2025  
+**Status**: Alpha - Functional but under active development  
+**Lines of Code**: ~4000 lines of Rust  
+**Tests**: 27 passing tests
 
 ---
 
-## 📊 Estado del Proyecto
+## 👨‍💻 Author
 
-**Versión actual**: v0.1.0  
-**Última actualización**: Noviembre 2025  
-**Estado**: Alpha - Funcional pero en desarrollo activo  
-**Líneas de código**: ~4000 líneas Rust  
-**Tests**: Pendiente de implementar
+**NotNative** is built with ❤️ by [k4ditano](https://github.com/k4ditano) @ [h2r](https://github.com/h2r)
+
+Designed specifically for [Omarchy OS](https://omarchy.org) - The next generation Linux distribution.
+
+---
+
+## 🙏 Acknowledgments
+
+- **Omarchy OS** - For providing the inspiration and theming system
+- **GTK Team** - For the excellent GTK4 toolkit
+- **Rust Community** - For the amazing ecosystem and tools
+- All contributors and users who help improve NotNative
+
+---
+
+<div align="center">
+
+**Made for power users who love speed and efficiency** ⚡
+
+[Report Bug](https://github.com/k4ditano/notnative-app/issues) · [Request Feature](https://github.com/k4ditano/notnative-app/issues) · [Documentation](https://github.com/k4ditano/notnative-app/wiki)
+
+</div>  
