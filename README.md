@@ -32,9 +32,9 @@ Built with ❤️ for [Omarchy OS](https://omarchy.org) by [k4ditano](https://gi
 
 ### Demo Video
 
-https://github.com/k4ditano/notnative-app/assets/screensaver.mp4
+[![NotNative Demo](screenshots/youtube-transcript.png)](https://github.com/k4ditano/notnative-app/raw/master/screenshots/screensaver.mp4)
 
-*Full demonstration of NotNative features in action*
+*Click to watch full demonstration of NotNative features in action*
 
 ### YouTube Video Integration & Transcripts
 ![YouTube Integration](screenshots/youtube-transcript.png)
