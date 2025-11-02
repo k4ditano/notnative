@@ -1,5 +1,6 @@
 use relm4::gtk::prelude::*;
 use relm4::{ComponentParts, ComponentSender, RelmWidgetExt, SimpleComponent, component, gtk};
+use gtk::glib;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -36,6 +37,14 @@ struct TagSpan {
     start: i32,
     end: i32,
     tag: String,
+}
+
+#[derive(Debug, Clone)]
+struct TodoSection {
+    title: String,
+    total: usize,
+    completed: usize,
+    percentage: usize,
 }
 
 /// Shared user-facing application identifier used by GTK.
@@ -83,6 +92,8 @@ pub struct MainApp {
     tag_spans: Rc<RefCell<Vec<TagSpan>>>,
     tags_menu_button: gtk::MenuButton,
     tags_list_box: gtk::ListBox,
+    todos_menu_button: gtk::MenuButton,
+    todos_list_box: gtk::ListBox,
     tag_completion_popup: gtk::Popover,
     tag_completion_list: gtk::ListBox,
     current_tag_prefix: Rc<RefCell<Option<String>>>, // Tag que se está escribiendo actualmente
@@ -97,6 +108,12 @@ pub struct MainApp {
     sidebar_notes_label: gtk::Label,
     new_note_button: gtk::Button,
     settings_button: gtk::MenuButton,
+    // Widgets de imágenes para modo normal
+    image_widgets: Rc<RefCell<Vec<gtk::Picture>>>,
+    // Widgets de TODOs para modo normal
+    todo_widgets: Rc<RefCell<Vec<gtk::CheckButton>>>,
+    // Sender para comunicación asíncrona desde closures
+    app_sender: Rc<RefCell<Option<ComponentSender<Self>>>>,
 }
 
 #[derive(Debug)]
@@ -137,6 +154,10 @@ pub enum AppMsg {
     ShowKeyboardShortcuts,
     ShowAboutDialog,
     ChangeLanguage(Language),
+    InsertImage, // Abrir diálogo para seleccionar imagen
+    InsertImageFromPath(String), // Insertar imagen desde una ruta
+    ProcessPastedText(String), // Procesar texto pegado (puede ser URL de imagen)
+    ToggleTodo { line_number: usize, new_state: bool }, // Marcar/desmarcar TODO
 }
 
 #[component(pub)]
@@ -318,6 +339,40 @@ impl SimpleComponent for MainApp {
                                         },
                                         
                                         append = tags_list_box = &gtk::ListBox {
+                                            add_css_class: "tags-list",
+                                            set_selection_mode: gtk::SelectionMode::None,
+                                        },
+                                    },
+                                },
+                            },
+                            
+                            append = todos_menu_button = &gtk::MenuButton {
+                                set_icon_name: "checkbox-checked-symbolic",
+                                set_tooltip_text: Some("TODOs de la nota"),
+                                add_css_class: "flat",
+                                add_css_class: "circular",
+                                set_valign: gtk::Align::Center,
+                                set_direction: gtk::ArrowType::Up,
+                                
+                                #[wrap(Some)]
+                                set_popover = &gtk::Popover {
+                                    add_css_class: "tags-popover",
+                                    set_autohide: true,
+                                    
+                                    #[wrap(Some)]
+                                    set_child = &gtk::Box {
+                                        set_orientation: gtk::Orientation::Vertical,
+                                        set_spacing: 8,
+                                        set_margin_all: 12,
+                                        set_width_request: 280,
+                                        
+                                        append = &gtk::Label {
+                                            set_markup: "<b>TODOs</b>",
+                                            set_xalign: 0.0,
+                                            set_margin_bottom: 4,
+                                        },
+                                        
+                                        append = todos_list_box = &gtk::ListBox {
                                             add_css_class: "tags-list",
                                             set_selection_mode: gtk::SelectionMode::None,
                                         },
@@ -532,6 +587,8 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
             tag_spans: Rc::new(RefCell::new(Vec::new())),
             tags_menu_button: widgets.tags_menu_button.clone(),
             tags_list_box: widgets.tags_list_box.clone(),
+            todos_menu_button: widgets.todos_menu_button.clone(),
+            todos_list_box: widgets.todos_list_box.clone(),
             tag_completion_popup: completion_popover.clone(),
             tag_completion_list: completion_list_box.clone(),
             current_tag_prefix: Rc::new(RefCell::new(None)),
@@ -545,7 +602,13 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
             sidebar_notes_label: widgets.sidebar_notes_label.clone(),
             new_note_button: widgets.new_note_button.clone(),
             settings_button: widgets.settings_button.clone(),
+            image_widgets: Rc::new(RefCell::new(Vec::new())),
+            todo_widgets: Rc::new(RefCell::new(Vec::new())),
+            app_sender: Rc::new(RefCell::new(None)),
         };
+        
+        // Guardar el sender en el modelo
+        *model.app_sender.borrow_mut() = Some(sender.clone());
 
         // Crear acciones para el menú contextual
         let rename_action = gtk::gio::SimpleAction::new("rename", None);
@@ -907,6 +970,21 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
             )
         );
         widgets.text_view.add_controller(motion_controller);
+        
+        // Configurar DropTarget para detectar cuando se arrastra contenido
+        let drop_target = gtk::DropTarget::new(gtk::glib::Type::STRING, gtk::gdk::DragAction::COPY);
+        drop_target.connect_drop(
+            gtk::glib::clone!(#[strong] sender, move |_target, value, _x, _y| {
+                if let Ok(text) = value.get::<String>() {
+                    // Procesar el texto arrastrado (puede ser URL de imagen)
+                    sender.input(AppMsg::ProcessPastedText(text));
+                    true
+                } else {
+                    false
+                }
+            })
+        );
+        widgets.text_view.add_controller(drop_target);
         
         // Conectar eventos del search_entry con debounce
         let search_generation: Rc<RefCell<u64>> = Rc::new(RefCell::new(0));
@@ -1458,6 +1536,7 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
                     self.sync_to_view();
                     self.update_status_bar(&sender);
                     self.refresh_tags_display_with_sender(&sender);
+                    self.refresh_todos_summary();
                     self.window_title.set_label(&name);
                     self.has_unsaved_changes = false;
                 }
@@ -1470,6 +1549,7 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
                     self.sync_to_view();
                     self.update_status_bar(&sender);
                     self.refresh_tags_display_with_sender(&sender);
+                    self.refresh_todos_summary();
                     self.window_title.set_label(&name);
                     
                     // Refrescar lista de notas en el sidebar
@@ -1566,7 +1646,43 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
                 
                 if is_folder {
                     println!("Eliminar carpeta: {}", item_name);
-                    // TODO: Implementar eliminación de carpeta
+                    
+                    // Construir la ruta completa de la carpeta
+                    let folder_path = self.notes_dir.root().join(&item_name);
+                    
+                    if folder_path.exists() && folder_path.is_dir() {
+                        // Eliminar carpeta y todo su contenido
+                        if let Err(e) = std::fs::remove_dir_all(&folder_path) {
+                            eprintln!("Error al eliminar carpeta: {}", e);
+                        } else {
+                            println!("Carpeta eliminada: {}", item_name);
+                            
+                            // Eliminar todas las notas de la carpeta del índice
+                            if let Ok(notes) = self.notes_dir.list_notes() {
+                                for note in notes {
+                                    if let Some(relative_path) = note.path().strip_prefix(self.notes_dir.root()).ok() {
+                                        if relative_path.starts_with(&item_name) {
+                                            let _ = self.notes_db.delete_note(note.name());
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Si la nota actual estaba en esta carpeta, limpiar el editor
+                            if let Some(current) = &self.current_note {
+                                if current.name().starts_with(&format!("{}/", item_name)) {
+                                    self.current_note = None;
+                                    self.buffer = NoteBuffer::new();
+                                    self.sync_to_view();
+                                    self.window_title.set_label("NotNative");
+                                }
+                            }
+                            
+                            // Refrescar sidebar
+                            self.populate_notes_list(&sender);
+                            *self.is_populating_list.borrow_mut() = false;
+                        }
+                    }
                 } else {
                     println!("Eliminar nota: {}", item_name);
                     if let Ok(Some(note)) = self.notes_dir.find_note(&item_name) {
@@ -1708,6 +1824,7 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
             
             AppMsg::RefreshTags => {
                 self.refresh_tags_display_with_sender(&sender);
+                self.refresh_todos_summary();
             }
             
             AppMsg::CheckTagCompletion => {
@@ -1849,6 +1966,31 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
                 
                 // Actualizar todos los textos de la UI
                 self.update_ui_language(&sender);
+            }
+            
+            AppMsg::InsertImage => {
+                self.show_insert_image_dialog(&sender);
+            }
+            
+            AppMsg::InsertImageFromPath(path) => {
+                self.insert_image_from_path(&path, &sender);
+            }
+            
+            AppMsg::ProcessPastedText(text) => {
+                self.process_pasted_text(&text, &sender);
+            }
+            AppMsg::ToggleTodo { line_number, new_state } => {
+                // Actualizar el estado del TODO en el buffer interno
+                self.update_todo_in_buffer(line_number, new_state);
+                
+                // Guardar automáticamente el cambio para que persista
+                self.save_current_note();
+                
+                // Actualizar resumen de TODOs
+                self.refresh_todos_summary();
+                
+                // Actualizar barra de estado
+                self.update_status_bar(&sender);
             }
         }
     }
@@ -2121,23 +2263,52 @@ impl MainApp {
                 }
             }
             EditorAction::Paste => {
-                // Pegar desde el portapapeles
+                // Pegar desde el portapapeles (texto o imagen)
                 if let Some(display) = gtk::gdk::Display::default() {
                     let clipboard = display.clipboard();
+                    let clipboard_for_text = clipboard.clone();
+                    let clipboard_for_fallback = clipboard.clone();
+                    
+                    // Primero intentar leer una imagen
+                    let sender_clone = sender.clone();
                     let text_buffer = self.text_buffer.clone();
+                    let text_buffer_fallback = self.text_buffer.clone();
                     let mut buffer = self.buffer.clone();
+                    let mut buffer_fallback = self.buffer.clone();
                     let cursor_pos = self.cursor_position;
                     
-                    clipboard.read_text_async(
+                    clipboard.read_texture_async(
                         None::<&gtk::gio::Cancellable>,
                         move |result| {
-                            if let Ok(Some(text)) = result {
-                                // Insertar el texto en el buffer interno
-                                buffer.insert(cursor_pos, &text);
-                                
-                                // También insertarlo en el text_buffer de GTK
-                                let mut iter = text_buffer.iter_at_offset(cursor_pos as i32);
-                                text_buffer.insert(&mut iter, &text);
+                            if let Ok(Some(texture)) = result {
+                                // Hay una imagen en el portapapeles
+                                // Guardarla como archivo temporal y luego insertarla
+                                if let Err(e) = Self::save_texture_and_insert(&texture, &sender_clone) {
+                                    eprintln!("Error guardando imagen del portapapeles: {}", e);
+                                    
+                                    // Si falla, intentar pegar como texto
+                                    let sender_for_fallback = sender_clone.clone();
+                                    clipboard_for_fallback.read_text_async(
+                                        None::<&gtk::gio::Cancellable>,
+                                        move |result| {
+                                            if let Ok(Some(text)) = result {
+                                                sender_for_fallback.input(AppMsg::ProcessPastedText(text.to_string()));
+                                            }
+                                        }
+                                    );
+                                }
+                            } else {
+                                // No hay imagen, intentar pegar texto
+                                let sender_for_text = sender_clone.clone();
+                                clipboard_for_text.read_text_async(
+                                    None::<&gtk::gio::Cancellable>,
+                                    move |result| {
+                                        if let Ok(Some(text)) = result {
+                                            // Procesar el texto (puede ser URL de imagen)
+                                            sender_for_text.input(AppMsg::ProcessPastedText(text.to_string()));
+                                        }
+                                    }
+                                );
                             }
                         }
                     );
@@ -2159,6 +2330,9 @@ impl MainApp {
             EditorAction::CreateNote => {
                 sender.input(AppMsg::ShowCreateNoteDialog);
             }
+            EditorAction::InsertImage => {
+                sender.input(AppMsg::InsertImage);
+            }
             _ => {
                 println!("Acción no implementada: {:?}", action);
             }
@@ -2169,6 +2343,42 @@ impl MainApp {
         
         // Actualizar barra de estado
         self.update_status_bar(sender);
+    }
+    
+    /// Actualiza el estado de un TODO en el buffer interno
+    fn update_todo_in_buffer(&mut self, line_pos: usize, new_state: bool) {
+        let text = self.buffer.to_string();
+        let chars: Vec<char> = text.chars().collect();
+        
+        // Verificar que la posición es válida
+        if line_pos >= chars.len() {
+            return;
+        }
+        
+        // Verificar que hay un TODO en esa posición
+        if line_pos + 4 >= chars.len() {
+            return;
+        }
+        
+        if chars[line_pos] == '-' && chars[line_pos + 1] == ' ' && 
+           chars[line_pos + 2] == '[' && chars[line_pos + 4] == ']' {
+            
+            let current_char = chars[line_pos + 3];
+            let should_be_checked = new_state;
+            let is_currently_checked = current_char == 'x' || current_char == 'X';
+            
+            // Solo actualizar si el estado cambió
+            if should_be_checked != is_currently_checked {
+                let new_char = if should_be_checked { "x" } else { " " };
+                
+                // Reemplazar el carácter en la posición correcta
+                self.buffer.delete(line_pos + 3..line_pos + 4);
+                self.buffer.insert(line_pos + 3, new_char);
+                
+                // Marcar como no guardado
+                self.has_unsaved_changes = true;
+            }
+        }
     }
     
     fn sync_to_view(&self) {
@@ -2293,12 +2503,56 @@ impl MainApp {
                     }
                 }
                 
-                // Listas: remover - o números al inicio de línea
+                // Listas y TODOs: detectar - [ ] o - [x] para TODOs, o - para bullets normales
                 '-' if !in_code_block && (result.is_empty() || result.ends_with('\n')) => {
                     if chars.peek() == Some(&' ') {
-                        chars.next(); // Saltar el espacio
-                        result.push('•'); // Agregar bullet
-                        result.push(' ');
+                        chars.next(); // Consumir el espacio después de -
+                        
+                        // Verificar si es un TODO: - [ ] o - [x]
+                        if chars.peek() == Some(&'[') {
+                            chars.next(); // Consumir [
+                            
+                            if let Some(&check_char) = chars.peek() {
+                                chars.next(); // Consumir el carácter dentro de []
+                                
+                                if chars.peek() == Some(&']') {
+                                    chars.next(); // Consumir ]
+                                    
+                                    // Verificar si hay espacio después de ]
+                                    if chars.peek() == Some(&' ') {
+                                        chars.next(); // Consumir el espacio
+                                        
+                                        // Es un TODO válido
+                                        if check_char == ' ' {
+                                            result.push_str("[TODO:unchecked] ");
+                                        } else if check_char == 'x' || check_char == 'X' {
+                                            result.push_str("[TODO:checked] ");
+                                        } else {
+                                            // No es un TODO válido, restaurar
+                                            result.push_str("- [");
+                                            result.push(check_char);
+                                            result.push_str("] ");
+                                        }
+                                    } else {
+                                        // No hay espacio después, no es TODO
+                                        result.push_str("- [");
+                                        result.push(check_char);
+                                        result.push(']');
+                                    }
+                                } else {
+                                    // No hay ] después, restaurar
+                                    result.push_str("- [");
+                                    result.push(check_char);
+                                }
+                            } else {
+                                // No hay nada después de [, restaurar
+                                result.push_str("- [");
+                            }
+                        } else {
+                            // Lista normal (bullet)
+                            result.push('•');
+                            result.push(' ');
+                        }
                     } else {
                         result.push(ch);
                     }
@@ -2308,6 +2562,43 @@ impl MainApp {
                 '>' if !in_code_block && (result.is_empty() || result.ends_with('\n')) => {
                     if chars.peek() == Some(&' ') {
                         chars.next(); // Saltar el espacio
+                    }
+                }
+                
+                // Links e Imágenes: [texto](url) o ![alt](url)
+                '!' if !in_code_block && chars.peek() == Some(&'[') => {
+                    // Es una imagen ![alt](url)
+                    chars.next(); // Consumir [
+                    
+                    // Extraer alt text (lo ignoramos)
+                    while let Some(&next_ch) = chars.peek() {
+                        chars.next();
+                        if next_ch == ']' {
+                            break;
+                        }
+                    }
+                    
+                    // Verificar si hay (url)
+                    if chars.peek() == Some(&'(') {
+                        chars.next(); // Consumir (
+                        
+                        // Extraer la URL de la imagen
+                        let mut img_src = String::new();
+                        while let Some(&next_ch) = chars.peek() {
+                            chars.next();
+                            if next_ch == ')' {
+                                break;
+                            }
+                            img_src.push(next_ch);
+                        }
+                        
+                        // Insertar marcador especial con la ruta
+                        let marker = format!("[IMG:{}]", img_src);
+                        println!("DEBUG render_clean_markdown: Insertando marcador: {}", marker);
+                        result.push_str(&marker);
+                    } else {
+                        // No era una imagen válida
+                        result.push_str("![");
                     }
                 }
                 
@@ -2420,6 +2711,10 @@ impl MainApp {
         let end = self.text_buffer.end_iter();
         self.text_buffer.remove_all_tags(&start, &end);
         
+        // Limpiar widgets de imágenes y TODOs anteriores
+        self.image_widgets.borrow_mut().clear();
+        self.todo_widgets.borrow_mut().clear();
+        
         // Obtener texto original para detectar markdown
         let original_text = self.buffer.to_string();
         let original_lines: Vec<&str> = original_text.lines().collect();
@@ -2496,6 +2791,230 @@ impl MainApp {
             
             clean_idx += 1;
             orig_idx += 1;
+        }
+        
+        // IMPORTANTE: Procesar imágenes y TODOs DESPUÉS de aplicar todos los estilos
+        // para evitar invalidar los iteradores
+        self.process_all_images_in_buffer();
+        self.process_all_todos_in_buffer();
+    }
+    
+    /// Procesa todos los marcadores de imagen [IMG:path] en el buffer completo
+    fn process_all_images_in_buffer(&self) {
+        // Obtener todo el texto del buffer
+        let start = self.text_buffer.start_iter();
+        let end = self.text_buffer.end_iter();
+        let buffer_text = self.text_buffer.text(&start, &end, false).to_string();
+        
+        // Debug: ver si hay marcadores
+        if buffer_text.contains("[IMG:") {
+            println!("DEBUG: Buffer contiene marcadores de imagen");
+        }
+        
+        // Buscar todos los marcadores y sus posiciones
+        let mut images = Vec::new();
+        let mut search_pos = 0;
+        
+        while let Some(img_start) = buffer_text[search_pos..].find("[IMG:") {
+            let absolute_start = search_pos + img_start;
+            
+            // Buscar el cierre ]
+            if let Some(img_end_relative) = buffer_text[absolute_start..].find(']') {
+                let absolute_end = absolute_start + img_end_relative;
+                
+                // Extraer la ruta de la imagen
+                let img_path = buffer_text[absolute_start + 5..absolute_end].to_string(); // +5 para saltar "[IMG:"
+                
+                println!("DEBUG: Encontrada imagen: {} en posición {}", img_path, absolute_start);
+                
+                images.push((absolute_start, absolute_end + 1, img_path)); // +1 para incluir ]
+                search_pos = absolute_end + 1;
+            } else {
+                break;
+            }
+        }
+        
+        // Procesar imágenes en orden inverso para no afectar las posiciones
+        for (start, end, img_path) in images.into_iter().rev() {
+            // Crear iteradores usando offsets de caracteres desde el inicio del buffer
+            let mut marker_start = self.text_buffer.start_iter();
+            marker_start.set_offset(start as i32);
+            
+            let mut marker_end = self.text_buffer.start_iter();
+            marker_end.set_offset(end as i32);
+            
+            // Eliminar el marcador del buffer
+            self.text_buffer.delete(&mut marker_start.clone(), &mut marker_end.clone());
+            
+            // Recrear el iterador de inicio después del delete
+            let mut anchor_pos = self.text_buffer.start_iter();
+            anchor_pos.set_offset(start as i32);
+            
+            // Insertar salto de línea antes de la imagen para separación
+            self.text_buffer.insert(&mut anchor_pos, "\n");
+            
+            // Actualizar posición después de la inserción
+            anchor_pos.set_offset(start as i32 + 1);
+            
+            // Crear anchor en la posición donde estaba el marcador
+            let anchor = self.text_buffer.create_child_anchor(&mut anchor_pos);
+            
+            // Crear un botón para la imagen (clickeable)
+            let image_button = gtk::Button::new();
+            image_button.set_can_focus(false);
+            image_button.set_focusable(false);
+            image_button.add_css_class("flat");
+            image_button.set_has_frame(false);
+            
+            // Crear widget Picture para la imagen
+            let picture = gtk::Picture::new();
+            picture.set_can_shrink(true);
+            picture.set_size_request(400, 300); // Tamaño máximo por defecto
+            picture.set_can_focus(false);
+            picture.set_focusable(false);
+            
+            // Resolver la ruta de la imagen
+            let full_path = if img_path.starts_with("/") || img_path.starts_with("http") {
+                img_path.clone()
+            } else {
+                // Ruta relativa a assets/
+                let assets_dir = NotesConfig::assets_dir();
+                format!("{}/{}", assets_dir.display(), img_path)
+            };
+            
+            println!("DEBUG: Cargando imagen desde: {}", full_path);
+            
+            // Cargar la imagen
+            if std::path::Path::new(&full_path).exists() {
+                picture.set_filename(Some(&full_path));
+                println!("DEBUG: Imagen cargada exitosamente");
+            } else {
+                println!("Advertencia: Imagen no encontrada: {}", full_path);
+            }
+            
+            // Agregar la imagen al botón
+            image_button.set_child(Some(&picture));
+            
+            // Conectar evento de click solo en modo Normal
+            let full_path_clone = full_path.clone();
+            let mode_ref = self.mode.clone();
+            let main_window = self.main_window.clone();
+            let i18n = self.i18n.clone();
+            
+            image_button.connect_clicked(move |_| {
+                let current_mode = *mode_ref.borrow();
+                if current_mode == EditorMode::Normal {
+                    // Mostrar diálogo con imagen ampliada
+                    show_image_viewer_dialog(&main_window, &full_path_clone, &i18n.borrow());
+                }
+            });
+            
+            // Anclar el botón al TextView
+            self.text_view.add_child_at_anchor(&image_button, &anchor);
+            
+            // Insertar salto de línea después de la imagen para separación
+            let mut after_anchor = self.text_buffer.start_iter();
+            after_anchor.set_offset(start as i32 + 1);
+            self.text_buffer.insert(&mut after_anchor, "\n");
+            
+            // Guardar referencia al widget
+            self.image_widgets.borrow_mut().push(picture);
+        }
+    }
+    
+    /// Procesa todos los marcadores de TODO [TODO:unchecked] y [TODO:checked] en el buffer completo
+    fn process_all_todos_in_buffer(&self) {
+        // Obtener todo el texto del buffer
+        let start = self.text_buffer.start_iter();
+        let end = self.text_buffer.end_iter();
+        let buffer_text = self.text_buffer.text(&start, &end, false).to_string();
+        
+        // Obtener el texto original del buffer interno para encontrar las posiciones de TODOs
+        let original_text = self.buffer.to_string();
+        
+        // Encontrar todas las posiciones de TODOs en el texto ORIGINAL (no renderizado)
+        let original_todo_positions = find_all_todos_in_text(&original_text);
+        
+        // Buscar todos los marcadores TODO en el buffer renderizado
+        let mut todos = Vec::new();
+        let mut search_pos = 0;
+        
+        // Buscar [TODO:unchecked]
+        while let Some(todo_start) = buffer_text[search_pos..].find("[TODO:unchecked]") {
+            let absolute_start = search_pos + todo_start;
+            todos.push((absolute_start, absolute_start + 16, false)); // 16 = longitud de "[TODO:unchecked]"
+            search_pos = absolute_start + 16;
+        }
+        
+        // Buscar [TODO:checked]
+        search_pos = 0;
+        while let Some(todo_start) = buffer_text[search_pos..].find("[TODO:checked]") {
+            let absolute_start = search_pos + todo_start;
+            todos.push((absolute_start, absolute_start + 14, true)); // 14 = longitud de "[TODO:checked]"
+            search_pos = absolute_start + 14;
+        }
+        
+        // Ordenar por posición (de mayor a menor para procesarlos en orden inverso)
+        todos.sort_by(|a, b| b.0.cmp(&a.0));
+        
+        // Asociar cada marcador con su posición original usando índice
+        let mut todo_index = original_todo_positions.len();
+        
+        // Procesar TODOs en orden inverso para no afectar las posiciones
+        for (start, end, is_checked) in todos {
+            todo_index = todo_index.saturating_sub(1);
+            // Crear iteradores usando offsets de caracteres desde el inicio del buffer
+            let mut marker_start = self.text_buffer.start_iter();
+            marker_start.set_offset(start as i32);
+            
+            let mut marker_end = self.text_buffer.start_iter();
+            marker_end.set_offset(end as i32);
+            
+            // Eliminar el marcador del buffer
+            self.text_buffer.delete(&mut marker_start.clone(), &mut marker_end.clone());
+            
+            // Recrear el iterador de inicio después del delete
+            let mut anchor_pos = self.text_buffer.start_iter();
+            anchor_pos.set_offset(start as i32);
+            
+            // Crear anchor en la posición donde estaba el marcador
+            let anchor = self.text_buffer.create_child_anchor(&mut anchor_pos);
+            
+            // Crear CheckButton para el TODO
+            let checkbox = gtk::CheckButton::new();
+            checkbox.set_active(is_checked);
+            checkbox.set_can_focus(false);
+            checkbox.set_focusable(false);
+            
+            // Obtener la posición del TODO original usando el índice
+            if let Some(&todo_pos) = original_todo_positions.get(todo_index) {
+                // Crear variables para el closure
+                let mode = self.mode.clone();
+                let app_sender = self.app_sender.clone();
+                
+                checkbox.connect_toggled(move |cb| {
+                    // Solo procesar en modo Normal
+                    if *mode.borrow() != EditorMode::Normal {
+                        return;
+                    }
+                    
+                    let is_now_checked = cb.is_active();
+                    
+                    // Enviar mensaje para actualizar el buffer interno
+                    if let Some(sender) = app_sender.borrow().as_ref() {
+                        sender.input(AppMsg::ToggleTodo {
+                            line_number: todo_pos,
+                            new_state: is_now_checked,
+                        });
+                    }
+                });
+            }
+            
+            // Anclar el checkbox al TextView
+            self.text_view.add_child_at_anchor(&checkbox, &anchor);
+            
+            // Guardar referencia al widget
+            self.todo_widgets.borrow_mut().push(checkbox);
         }
     }
     
@@ -2836,7 +3355,7 @@ impl MainApp {
             let mut end_iter = self.text_buffer.start_iter();
             end_iter.set_offset(char_end as i32);
             
-            let tag_name = match style.style_type {
+            let tag_name = match &style.style_type {
                 StyleType::Heading1 => "h1",
                 StyleType::Heading2 => "h2",
                 StyleType::Heading3 => "h3",
@@ -2844,6 +3363,10 @@ impl MainApp {
                 StyleType::Italic => "italic",
                 StyleType::Code => "code",
                 StyleType::CodeBlock => "codeblock",
+                StyleType::Image { .. } => {
+                    // Las imágenes se manejan con widgets anclados, no con tags de texto
+                    continue;
+                }
                 _ => continue,
             };
             
@@ -2980,6 +3503,151 @@ impl MainApp {
         // Versión sin sender - simplemente limpia
         while let Some(row) = self.tags_list_box.row_at_index(0) {
             self.tags_list_box.remove(&row);
+        }
+    }
+    
+    fn refresh_todos_summary(&self) {
+        // Limpiar lista anterior
+        while let Some(row) = self.todos_list_box.row_at_index(0) {
+            self.todos_list_box.remove(&row);
+        }
+        
+        // Obtener el texto del buffer
+        let text = self.buffer.to_string();
+        
+        // Analizar TODOs agrupados por sección
+        let todo_sections = self.analyze_todos_by_section(&text);
+        
+        if todo_sections.is_empty() {
+            let i18n = self.i18n.borrow();
+            let empty_label = gtk::Label::new(Some(&i18n.t("no_todos")));
+            empty_label.add_css_class("dim-label");
+            empty_label.set_margin_all(8);
+            self.todos_list_box.append(&empty_label);
+            return;
+        }
+        
+        // Mostrar cada sección con su resumen
+        let i18n = self.i18n.borrow();
+        for section in todo_sections {
+            let section_box = self.create_todo_section_row(&section, &i18n);
+            self.todos_list_box.append(&section_box);
+        }
+    }
+    
+    fn create_todo_section_row(&self, section: &TodoSection, i18n: &I18n) -> gtk::Box {
+        // Box principal vertical (igual margen que tags)
+        let row_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        row_box.set_margin_all(4);
+        
+        // Título de la sección
+        let title_label = gtk::Label::new(Some(&section.title));
+        title_label.set_xalign(0.0);
+        title_label.set_wrap(true);
+        title_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+        title_label.set_max_width_chars(30);
+        title_label.set_markup(&format!("<b>{}</b>", glib::markup_escape_text(&section.title)));
+        row_box.append(&title_label);
+        
+        // Progreso y porcentaje en una sola línea
+        let progress_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        progress_box.set_margin_top(2);
+        
+        let progress_label = gtk::Label::new(Some(&format!(
+            "{}/{} {}",
+            section.completed,
+            section.total,
+            i18n.t("completed")
+        )));
+        progress_label.set_xalign(0.0);
+        progress_label.add_css_class("dim-label");
+        progress_label.set_hexpand(true);
+        progress_box.append(&progress_label);
+        
+        let percentage_label = gtk::Label::new(Some(&format!("{}%", section.percentage)));
+        percentage_label.set_xalign(1.0);
+        
+        // Usar clases CSS estándar de GTK según el porcentaje
+        if section.percentage == 100 {
+            percentage_label.add_css_class("success");
+        } else if section.percentage >= 70 {
+            percentage_label.add_css_class("warning");
+        }
+        
+        progress_box.append(&percentage_label);
+        row_box.append(&progress_box);
+        
+        // Barra de progreso visual
+        let progress_bar = gtk::ProgressBar::new();
+        progress_bar.set_fraction(section.percentage as f64 / 100.0);
+        progress_bar.set_margin_top(2);
+        progress_bar.set_show_text(false);
+        row_box.append(&progress_bar);
+        
+        row_box
+    }
+    
+    fn analyze_todos_by_section(&self, text: &str) -> Vec<TodoSection> {
+        let lines: Vec<&str> = text.lines().collect();
+        let mut sections = Vec::new();
+        let i18n = self.i18n.borrow();
+        let mut current_section = i18n.t("no_section");
+        let mut current_todos: Vec<bool> = Vec::new(); // true = completado, false = pendiente
+        
+        for line in lines {
+            // Detectar encabezados (h1, h2, h3)
+            if line.starts_with("# ") {
+                // Guardar sección anterior si tiene TODOs
+                if !current_todos.is_empty() {
+                    sections.push(self.create_todo_section(&current_section, &current_todos));
+                    current_todos.clear();
+                }
+                current_section = line.trim_start_matches('#').trim().to_string();
+            } else if line.starts_with("## ") {
+                if !current_todos.is_empty() {
+                    sections.push(self.create_todo_section(&current_section, &current_todos));
+                    current_todos.clear();
+                }
+                current_section = line.trim_start_matches('#').trim().to_string();
+            } else if line.starts_with("### ") {
+                if !current_todos.is_empty() {
+                    sections.push(self.create_todo_section(&current_section, &current_todos));
+                    current_todos.clear();
+                }
+                current_section = line.trim_start_matches('#').trim().to_string();
+            }
+            
+            // Detectar TODOs
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("- [ ]") {
+                current_todos.push(false);
+            } else if trimmed.starts_with("- [x]") || trimmed.starts_with("- [X]") {
+                current_todos.push(true);
+            }
+        }
+        
+        // Agregar última sección si tiene TODOs
+        if !current_todos.is_empty() {
+            sections.push(self.create_todo_section(&current_section, &current_todos));
+        }
+        
+        sections
+    }
+    
+    fn create_todo_section(&self, title: &str, todos: &[bool]) -> TodoSection {
+        let total = todos.len();
+        let completed = todos.iter().filter(|&&done| done).count();
+        let percentage = if total > 0 {
+            (completed * 100) / total
+        } else {
+            0
+        };
+        
+        TodoSection {
+            title: title.to_string(),
+            total,
+            completed,
+            percentage,
         }
     }
     
@@ -3212,15 +3880,21 @@ impl MainApp {
     /// Guarda la nota actual en su archivo .md
     fn save_current_note(&mut self) {
         if let Some(note) = &self.current_note {
-            let content = self.buffer.to_string();
-            if let Err(e) = note.write(&content) {
+            // Obtener contenido anterior y nuevo
+            let old_content = note.read().unwrap_or_default();
+            let new_content = self.buffer.to_string();
+            
+            if let Err(e) = note.write(&new_content) {
                 eprintln!("Error guardando nota: {}", e);
             } else {
                 println!("Nota guardada: {}", note.name());
                 self.has_unsaved_changes = false;
                 
+                // Limpiar imágenes no referenciadas
+                self.cleanup_unused_images(&old_content, &new_content);
+                
                 // Actualizar índice en base de datos
-                if let Err(e) = self.notes_db.update_note(note.name(), &content) {
+                if let Err(e) = self.notes_db.update_note(note.name(), &new_content) {
                     eprintln!("Error actualizando índice: {}", e);
                 } else {
                     println!("Índice actualizado");
@@ -3228,7 +3902,7 @@ impl MainApp {
                     // Actualizar tags
                     if let Ok(Some(note_meta)) = self.notes_db.get_note(note.name()) {
                         // Obtener tags actuales del contenido (frontmatter + inline #tags)
-                        let new_tags = extract_all_tags(&content);
+                        let new_tags = extract_all_tags(&new_content);
                         
                         // Obtener tags existentes en DB
                         if let Ok(existing_tags) = self.notes_db.get_note_tags(note_meta.id) {
@@ -3261,6 +3935,75 @@ impl MainApp {
             let name = format!("nota_{}", timestamp);
             if let Err(e) = self.create_new_note(&name) {
                 eprintln!("Error creando nota automática: {}", e);
+            }
+        }
+    }
+    
+    /// Extrae todas las rutas de imágenes del contenido markdown
+    fn extract_image_paths(content: &str) -> Vec<String> {
+        let mut paths = Vec::new();
+        let mut chars = content.chars().peekable();
+        
+        while let Some(ch) = chars.next() {
+            if ch == '!' && chars.peek() == Some(&'[') {
+                chars.next(); // Consumir [
+                
+                // Saltar el alt text
+                while let Some(&next_ch) = chars.peek() {
+                    chars.next();
+                    if next_ch == ']' {
+                        break;
+                    }
+                }
+                
+                // Verificar si hay (url)
+                if chars.peek() == Some(&'(') {
+                    chars.next(); // Consumir (
+                    
+                    let mut path = String::new();
+                    while let Some(&next_ch) = chars.peek() {
+                        chars.next();
+                        if next_ch == ')' {
+                            break;
+                        }
+                        path.push(next_ch);
+                    }
+                    
+                    if !path.is_empty() {
+                        paths.push(path);
+                    }
+                }
+            }
+        }
+        
+        paths
+    }
+    
+    /// Limpia las imágenes que ya no están referenciadas en el contenido
+    fn cleanup_unused_images(&self, old_content: &str, new_content: &str) {
+        let old_images = Self::extract_image_paths(old_content);
+        let new_images = Self::extract_image_paths(new_content);
+        
+        let assets_dir = NotesConfig::assets_dir();
+        
+        // Para cada imagen que estaba en el contenido antiguo
+        for old_image in old_images {
+            // Si ya no está en el nuevo contenido
+            if !new_images.contains(&old_image) {
+                // Determinar la ruta completa del archivo
+                let file_path = if old_image.starts_with("/") {
+                    std::path::PathBuf::from(&old_image)
+                } else {
+                    assets_dir.join(&old_image)
+                };
+                
+                // Verificar si el archivo existe en assets y eliminarlo
+                if file_path.exists() && file_path.starts_with(&assets_dir) {
+                    match std::fs::remove_file(&file_path) {
+                        Ok(_) => println!("Imagen eliminada de assets: {}", file_path.display()),
+                        Err(e) => eprintln!("Error eliminando imagen {}: {}", file_path.display(), e),
+                    }
+                }
             }
         }
     }
@@ -4002,6 +4745,235 @@ impl MainApp {
         );
     }
     
+    fn show_insert_image_dialog(&self, sender: &ComponentSender<Self>) {
+        use gtk::{FileChooserAction, FileChooserDialog, ResponseType};
+        
+        // Crear diálogo de selección de archivo
+        let dialog = FileChooserDialog::new(
+            Some("Seleccionar imagen"),
+            Some(&self.main_window),
+            FileChooserAction::Open,
+            &[("Cancelar", ResponseType::Cancel), ("Abrir", ResponseType::Accept)]
+        );
+        
+        // Crear filtro para imágenes
+        let filter = gtk::FileFilter::new();
+        filter.set_name(Some("Imágenes"));
+        filter.add_mime_type("image/*");
+        filter.add_pattern("*.png");
+        filter.add_pattern("*.jpg");
+        filter.add_pattern("*.jpeg");
+        filter.add_pattern("*.gif");
+        filter.add_pattern("*.webp");
+        filter.add_pattern("*.svg");
+        dialog.add_filter(&filter);
+        
+        let sender_clone = sender.clone();
+        dialog.connect_response(move |dialog, response| {
+            if response == ResponseType::Accept {
+                if let Some(file) = dialog.file() {
+                    if let Some(path) = file.path() {
+                        if let Some(path_str) = path.to_str() {
+                            sender_clone.input(AppMsg::InsertImageFromPath(path_str.to_string()));
+                        }
+                    }
+                }
+            }
+            dialog.close();
+        });
+        
+        dialog.show();
+    }
+    
+    fn save_texture_and_insert(texture: &gtk::gdk::Texture, sender: &ComponentSender<Self>) -> anyhow::Result<()> {
+        use chrono::Local;
+        
+        // Asegurarse de que el directorio de assets existe
+        let assets_dir = NotesConfig::ensure_assets_dir()?;
+        
+        // Generar nombre único basado en timestamp
+        let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
+        let filename = format!("clipboard_{}.png", timestamp);
+        let dest_path = assets_dir.join(&filename);
+        
+        // Guardar la textura como archivo PNG
+        texture.save_to_png(dest_path.to_str().ok_or_else(|| anyhow::anyhow!("Path inválido"))?)?;
+        
+        // Enviar mensaje para insertar
+        sender.input(AppMsg::InsertImageFromPath(dest_path.to_string_lossy().to_string()));
+        
+        Ok(())
+    }
+    
+    fn insert_image_from_path(&mut self, source_path: &str, sender: &ComponentSender<Self>) {
+        use std::path::Path;
+        use std::fs;
+        
+        // Asegurarse de que el directorio de assets existe
+        let assets_dir = match NotesConfig::ensure_assets_dir() {
+            Ok(dir) => dir,
+            Err(e) => {
+                eprintln!("Error creando directorio de assets: {}", e);
+                return;
+            }
+        };
+        
+        let source = Path::new(source_path);
+        
+        // Si la imagen ya está en el directorio de assets, no copiarla
+        let dest_path = if source.starts_with(&assets_dir) {
+            source.to_path_buf()
+        } else {
+            // Obtener el nombre del archivo
+            let filename = match source.file_name() {
+                Some(name) => name.to_string_lossy().to_string(),
+                None => {
+                    eprintln!("No se pudo obtener el nombre del archivo");
+                    return;
+                }
+            };
+            
+            // Generar nombre único si es necesario
+            let mut dest_filename = filename.clone();
+            let mut counter = 1;
+            let mut path = assets_dir.join(&dest_filename);
+            
+            while path.exists() {
+                let stem = Path::new(&filename).file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("image");
+                let ext = Path::new(&filename).extension()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("png");
+                dest_filename = format!("{}_{}.{}", stem, counter, ext);
+                path = assets_dir.join(&dest_filename);
+                counter += 1;
+            }
+            
+            // Copiar la imagen al directorio de assets
+            if let Err(e) = fs::copy(source_path, &path) {
+                eprintln!("Error copiando imagen: {}", e);
+                return;
+            }
+            
+            path
+        };
+        
+        // Insertar sintaxis markdown para la imagen
+        let markdown_syntax = format!("![{}]({})", 
+            dest_path.file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("imagen"),
+            dest_path.to_string_lossy()
+        );
+        
+        // Insertar en la posición del cursor
+        if *self.mode.borrow() != EditorMode::Insert {
+            // Cambiar a modo Insert primero
+            *self.mode.borrow_mut() = EditorMode::Insert;
+        }
+        
+        self.buffer.insert(self.cursor_position, &markdown_syntax);
+        self.cursor_position += markdown_syntax.chars().count();
+        self.has_unsaved_changes = true;
+        
+        // Sincronizar vista
+        self.sync_to_view();
+        self.update_status_bar(sender);
+        
+        println!("Imagen insertada: {}", markdown_syntax);
+    }
+    
+    /// Detecta si una URL apunta a una imagen basándose en la extensión
+    fn is_image_url(url: &str) -> bool {
+        let url_lower = url.to_lowercase();
+        url_lower.ends_with(".png") 
+            || url_lower.ends_with(".jpg") 
+            || url_lower.ends_with(".jpeg") 
+            || url_lower.ends_with(".gif") 
+            || url_lower.ends_with(".webp")
+            || url_lower.ends_with(".svg")
+            || url_lower.ends_with(".bmp")
+            || url_lower.ends_with(".ico")
+    }
+    
+    /// Descarga una imagen desde una URL y la guarda en assets
+    fn download_image_from_url(url: &str) -> anyhow::Result<std::path::PathBuf> {
+        use std::io::Write;
+        use chrono::Local;
+        
+        // Asegurarse de que el directorio de assets existe
+        let assets_dir = NotesConfig::ensure_assets_dir()?;
+        
+        // Descargar la imagen
+        let response = reqwest::blocking::get(url)?;
+        
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!("Error descargando imagen: {}", response.status()));
+        }
+        
+        let bytes = response.bytes()?;
+        
+        // Obtener extensión de la URL o usar .png por defecto
+        let extension = url.rsplit('.').next()
+            .and_then(|ext| {
+                // Eliminar query params si existen
+                let clean_ext = ext.split('?').next().unwrap_or(ext);
+                if clean_ext.len() <= 5 && clean_ext.chars().all(|c| c.is_alphanumeric()) {
+                    Some(clean_ext)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or("png");
+        
+        // Generar nombre único basado en timestamp
+        let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
+        let filename = format!("web_image_{}.{}", timestamp, extension);
+        let dest_path = assets_dir.join(&filename);
+        
+        // Guardar la imagen
+        let mut file = std::fs::File::create(&dest_path)?;
+        file.write_all(&bytes)?;
+        
+        Ok(dest_path)
+    }
+    
+    /// Procesa texto pegado: si es una URL de imagen, la descarga
+    fn process_pasted_text(&mut self, text: &str, sender: &ComponentSender<Self>) {
+        let trimmed = text.trim();
+        
+        // Verificar si es una URL de imagen
+        if (trimmed.starts_with("http://") || trimmed.starts_with("https://")) 
+            && Self::is_image_url(trimmed) {
+            
+            println!("Detectada URL de imagen: {}", trimmed);
+            
+            // Descargar la imagen en un hilo separado
+            let url = trimmed.to_string();
+            let sender_clone = sender.clone();
+            
+            std::thread::spawn(move || {
+                match Self::download_image_from_url(&url) {
+                    Ok(path) => {
+                        println!("Imagen descargada: {:?}", path);
+                        sender_clone.input(AppMsg::InsertImageFromPath(path.to_string_lossy().to_string()));
+                    }
+                    Err(e) => {
+                        eprintln!("Error descargando imagen: {}", e);
+                    }
+                }
+            });
+        } else {
+            // Si no es una URL de imagen, insertar como texto normal
+            self.buffer.insert(self.cursor_position, text);
+            self.cursor_position += text.chars().count();
+            self.has_unsaved_changes = true;
+            self.sync_to_view();
+            self.update_status_bar(sender);
+        }
+    }
+    
     fn show_preferences_dialog(&self, sender: &ComponentSender<Self>) {
         let i18n = self.i18n.borrow();
         
@@ -4074,6 +5046,103 @@ impl MainApp {
         
         language_box.append(&language_dropdown);
         content_box.append(&language_box);
+        
+        content_box.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+        
+        // Sección de Directorio de trabajo
+        let workspace_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(8)
+            .build();
+        
+        let workspace_label = gtk::Label::builder()
+            .label(&i18n.t("workspace"))
+            .halign(gtk::Align::Start)
+            .build();
+        workspace_label.add_css_class("heading");
+        workspace_box.append(&workspace_label);
+        
+        let workspace_description = gtk::Label::builder()
+            .label(&i18n.t("workspace_description"))
+            .halign(gtk::Align::Start)
+            .wrap(true)
+            .build();
+        workspace_description.add_css_class("dim-label");
+        workspace_box.append(&workspace_description);
+        
+        // Mostrar ubicación actual
+        let current_location = self.notes_dir.root().to_string_lossy().to_string();
+        let location_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .spacing(8)
+            .build();
+        
+        let location_label = gtk::Label::builder()
+            .label(&format!("{}: {}", i18n.t("workspace_location"), current_location))
+            .halign(gtk::Align::Start)
+            .hexpand(true)
+            .wrap(true)
+            .build();
+        location_label.add_css_class("dim-label");
+        
+        let change_button = gtk::Button::builder()
+            .label(&i18n.t("change_workspace"))
+            .build();
+        
+        let notes_dir_root = self.notes_dir.root().to_path_buf();
+        let select_folder_text = i18n.t("select_workspace_folder");
+        let cancel_text = i18n.t("cancel");
+        let select_text = i18n.t("select");
+        
+        change_button.connect_clicked(gtk::glib::clone!(
+            #[strong] sender,
+            #[strong] dialog,
+            #[strong] select_folder_text,
+            #[strong] cancel_text,
+            #[strong] select_text,
+            move |_| {
+                // Crear diálogo para seleccionar carpeta
+                let folder_dialog = gtk::FileChooserDialog::new(
+                    Some(&select_folder_text),
+                    Some(&dialog),
+                    gtk::FileChooserAction::SelectFolder,
+                    &[
+                        (&cancel_text, gtk::ResponseType::Cancel),
+                        (&select_text, gtk::ResponseType::Accept)
+                    ]
+                );
+                
+                // Establecer la carpeta actual como punto de inicio
+                let _ = folder_dialog.set_current_folder(Some(&gtk::gio::File::for_path(&notes_dir_root)));
+                
+                folder_dialog.connect_response(gtk::glib::clone!(
+                    #[strong] sender,
+                    move |dialog, response| {
+                        if response == gtk::ResponseType::Accept {
+                            if let Some(folder) = dialog.file() {
+                                if let Some(path) = folder.path() {
+                                    // TODO: Implementar cambio de workspace
+                                    // Por ahora solo mostramos un mensaje
+                                    println!("Nueva carpeta seleccionada: {:?}", path);
+                                    // La implementación completa requeriría:
+                                    // 1. Guardar la nueva ruta en NotesConfig
+                                    // 2. Reiniciar la aplicación o recargar NotesDirectory
+                                }
+                            }
+                        }
+                        dialog.close();
+                    }
+                ));
+                
+                folder_dialog.show();
+            }
+        ));
+        
+        location_box.append(&location_label);
+        location_box.append(&change_button);
+        workspace_box.append(&location_box);
+        
+        content_box.append(&workspace_box);
         
         content_box.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
         
@@ -4327,6 +5396,117 @@ impl MainApp {
         
         dialog.present();
     }
+}
+
+/// Encuentra todas las posiciones de TODOs en el texto original
+/// Devuelve un vector con las posiciones de inicio de cada `- [ ]` o `- [x]`
+fn find_all_todos_in_text(text: &str) -> Vec<usize> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut positions = Vec::new();
+    
+    let mut pos = 0;
+    while pos + 4 < chars.len() {
+        // Buscar el patrón - [ ] o - [x]
+        if chars[pos] == '-' && chars[pos + 1] == ' ' && 
+           chars[pos + 2] == '[' && 
+           (chars[pos + 3] == ' ' || chars[pos + 3] == 'x' || chars[pos + 3] == 'X') &&
+           chars[pos + 4] == ']' {
+            positions.push(pos);
+            pos += 5; // Saltar el TODO completo
+        } else {
+            pos += 1;
+        }
+    }
+    
+    positions
+}
+
+/// Muestra un diálogo con la imagen ampliada y opción para abrir su ubicación
+fn show_image_viewer_dialog(parent_window: &gtk::ApplicationWindow, image_path: &str, i18n: &I18n) {
+    let dialog = gtk::Window::builder()
+        .transient_for(parent_window)
+        .modal(true)
+        .title(&i18n.t("image_viewer"))
+        .default_width(800)
+        .default_height(600)
+        .build();
+    
+    let main_box = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(0)
+        .build();
+    
+    // Área de imagen con scroll
+    let scrolled = gtk::ScrolledWindow::builder()
+        .vexpand(true)
+        .hexpand(true)
+        .build();
+    
+    let picture = gtk::Picture::new();
+    picture.set_can_shrink(true);
+    picture.set_keep_aspect_ratio(true);
+    
+    if std::path::Path::new(image_path).exists() {
+        picture.set_filename(Some(image_path));
+    }
+    
+    scrolled.set_child(Some(&picture));
+    main_box.append(&scrolled);
+    
+    // Barra inferior con botón
+    let bottom_bar = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(8)
+        .margin_start(12)
+        .margin_end(12)
+        .margin_top(8)
+        .margin_bottom(12)
+        .halign(gtk::Align::End)
+        .build();
+    
+    let open_location_button = gtk::Button::builder()
+        .label(&i18n.t("open_file_location"))
+        .build();
+    
+    let image_path_clone = image_path.to_string();
+    open_location_button.connect_clicked(move |_| {
+        // Abrir el directorio que contiene la imagen
+        if let Some(parent_dir) = std::path::Path::new(&image_path_clone).parent() {
+            let path_str = parent_dir.to_string_lossy().to_string();
+            std::thread::spawn(move || {
+                if let Err(e) = open::that(&path_str) {
+                    eprintln!("Error abriendo ubicación de imagen: {}", e);
+                }
+            });
+        }
+    });
+    
+    bottom_bar.append(&open_location_button);
+    main_box.append(&bottom_bar);
+    
+    dialog.set_child(Some(&main_box));
+    
+    // Agregar header bar
+    let header_bar = gtk::HeaderBar::new();
+    dialog.set_titlebar(Some(&header_bar));
+    
+    // Permitir cerrar con Escape
+    let esc_controller = gtk::EventControllerKey::new();
+    let dialog_clone = dialog.clone();
+    esc_controller.connect_key_pressed(move |_, keyval, _, _| {
+        let key_name = keyval.name().map(|s| s.to_string());
+        if key_name.as_deref() == Some("Escape") {
+            dialog_clone.close();
+            return gtk::glib::Propagation::Stop;
+        }
+        gtk::glib::Propagation::Proceed
+    });
+    dialog.add_controller(esc_controller);
+    
+    dialog.present();
+}
+
+impl MainApp {
     
     fn show_about_dialog(&self) {
         let i18n = self.i18n.borrow();
@@ -4355,6 +5535,7 @@ impl MainApp {
         self.new_note_button.set_tooltip_text(Some(&i18n.t("new_note")));
         self.settings_button.set_tooltip_text(Some(&i18n.t("settings")));
         self.tags_menu_button.set_tooltip_text(Some(&i18n.t("tags_note")));
+        self.todos_menu_button.set_tooltip_text(Some(&i18n.t("todos_note")));
         
         // Actualizar labels del sidebar
         self.sidebar_notes_label.set_label(&i18n.t("notes"));
@@ -4389,6 +5570,9 @@ impl MainApp {
         
         // Actualizar display de tags
         self.refresh_tags_display_after_language_change();
+        
+        // Actualizar display de TODOs
+        self.refresh_todos_summary();
         
         println!("UI actualizada al idioma: {:?}", i18n.current_language());
     }
@@ -4441,8 +5625,33 @@ impl MainApp {
             }
         ));
         
+        // Botón para abrir carpeta de trabajo
+        let workspace_button = gtk::Button::builder()
+            .label(&i18n.t("open_workspace_folder"))
+            .halign(gtk::Align::Fill)
+            .build();
+        workspace_button.add_css_class("flat");
+        
+        let notes_dir_path = self.notes_dir.root().to_path_buf();
+        let settings_btn = self.settings_button.clone();
+        workspace_button.connect_clicked(move |_| {
+            // Cerrar el popover primero
+            if let Some(popover) = settings_btn.popover() {
+                popover.popdown();
+            }
+            
+            // Abrir la carpeta en un hilo separado para no bloquear la UI
+            let path = notes_dir_path.clone();
+            std::thread::spawn(move || {
+                if let Err(e) = open::that(&path) {
+                    eprintln!("Error abriendo carpeta de trabajo: {}", e);
+                }
+            });
+        });
+        
         // Agregar botones al box
         menu_box.append(&preferences_button);
+        menu_box.append(&workspace_button);
         menu_box.append(&shortcuts_button);
         menu_box.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
         menu_box.append(&about_button);

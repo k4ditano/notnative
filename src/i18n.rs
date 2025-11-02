@@ -96,6 +96,15 @@ impl I18n {
         translations.insert("language_description", ("Elige el idioma de la interfaz", "Choose the interface language"));
         translations.insert("restart_required", ("Se requiere reiniciar la aplicación", "Application restart required"));
         
+        // Workspace
+        translations.insert("workspace", ("Directorio de trabajo", "Workspace"));
+        translations.insert("workspace_description", ("Ubicación donde se guardan las notas y recursos", "Location where notes and resources are saved"));
+        translations.insert("open_workspace_folder", ("Abrir carpeta de trabajo", "Open workspace folder"));
+        translations.insert("change_workspace", ("Cambiar ubicación", "Change location"));
+        translations.insert("workspace_location", ("Ubicación", "Location"));
+        translations.insert("select_workspace_folder", ("Seleccionar carpeta de trabajo", "Select workspace folder"));
+        translations.insert("select", ("Seleccionar", "Select"));
+        
         // Atajos de teclado
         translations.insert("shortcuts_general", ("General", "General"));
         translations.insert("shortcuts_modes", ("Modos de edición", "Editing Modes"));
@@ -150,6 +159,17 @@ impl I18n {
         translations.insert("note_renamed", ("Nota renombrada", "Note renamed"));
         translations.insert("error", ("Error", "Error"));
         translations.insert("success", ("Éxito", "Success"));
+        
+        // Visor de imágenes
+        translations.insert("image_viewer", ("Visor de imagen", "Image Viewer"));
+        translations.insert("open_file_location", ("Abrir ubicación", "Open Location"));
+        
+        // TODOs
+        translations.insert("todos", ("TODOs", "TODOs"));
+        translations.insert("todos_note", ("TODOs de la nota", "Note TODOs"));
+        translations.insert("no_todos", ("No hay TODOs en esta nota", "No TODOs in this note"));
+        translations.insert("completed", ("completo", "completed"));
+        translations.insert("no_section", ("Sin sección", "No section"));
         
         Self {
             language,

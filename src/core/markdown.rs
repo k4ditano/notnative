@@ -19,6 +19,7 @@ pub enum StyleType {
     CodeBlock,
     Link,
     Quote,
+    Image { src: String, alt: String },
 }
 
 /// Parser de markdown que extrae información de estilo
@@ -48,6 +49,7 @@ impl MarkdownParser {
         let mut emphasis_range: Option<usize> = None;
         let mut code_range: Option<usize> = None;
         let mut code_block_range: Option<usize> = None;
+        let mut image_range: Option<(usize, String, String)> = None; // (start, src, alt)
         
         for (event, range) in parser {
             match event {
@@ -70,6 +72,9 @@ impl MarkdownParser {
                         }
                         Tag::CodeBlock(_) => {
                             code_block_range = Some(range.start);
+                        }
+                        Tag::Image { dest_url, title, .. } => {
+                            image_range = Some((range.start, dest_url.to_string(), title.to_string()));
                         }
                         _ => {}
                     }
@@ -122,6 +127,15 @@ impl MarkdownParser {
                                     start,
                                     end: range.end,
                                     style_type: StyleType::CodeBlock,
+                                });
+                            }
+                        }
+                        TagEnd::Image => {
+                            if let Some((start, src, alt)) = image_range.take() {
+                                styles.push(TextStyle {
+                                    start,
+                                    end: range.end,
+                                    style_type: StyleType::Image { src, alt },
                                 });
                             }
                         }

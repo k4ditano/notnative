@@ -24,6 +24,9 @@ pub enum EditorAction {
     DeleteLine,
     DeleteSelection,
     
+    /// Insertar imagen
+    InsertImage,
+    
     /// Undo/Redo
     Undo,
     Redo,
@@ -142,6 +145,13 @@ impl CommandParser {
         }
 
         if modifiers.ctrl {
+            if modifiers.shift {
+                return match key {
+                    "i" | "I" => EditorAction::InsertImage,
+                    _ => EditorAction::None,
+                };
+            }
+            
             return match key {
                 "s" => EditorAction::Save,
                 "c" => EditorAction::Copy,

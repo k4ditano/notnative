@@ -13,6 +13,9 @@ pub struct NotesConfig {
     /// Preferencia de idioma (código ISO 639-1: "es", "en", etc.)
     #[serde(default)]
     pub language: Option<String>,
+    /// Directorio de trabajo personalizado (notas y assets)
+    #[serde(default)]
+    pub workspace_dir: Option<String>,
 }
 
 impl Default for NotesConfig {
@@ -28,6 +31,7 @@ impl NotesConfig {
             order: HashMap::new(),
             expanded_folders: Vec::new(),
             language: None,
+            workspace_dir: None,
         }
     }
     
@@ -119,11 +123,36 @@ impl NotesConfig {
         self.language = lang;
     }
     
+    /// Obtiene el directorio de trabajo personalizado
+    pub fn get_workspace_dir(&self) -> Option<&str> {
+        self.workspace_dir.as_deref()
+    }
+    
+    /// Establece el directorio de trabajo personalizado
+    pub fn set_workspace_dir(&mut self, dir: Option<String>) {
+        self.workspace_dir = dir;
+    }
+    
     /// Ruta por defecto del archivo de configuración
     pub fn default_path() -> PathBuf {
         dirs::data_local_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("notnative")
             .join("config.json")
+    }
+    
+    /// Obtiene la carpeta de assets para las notas
+    pub fn assets_dir() -> PathBuf {
+        dirs::data_local_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("notnative")
+            .join("assets")
+    }
+    
+    /// Asegura que el directorio de assets exista
+    pub fn ensure_assets_dir() -> Result<PathBuf> {
+        let assets_dir = Self::assets_dir();
+        std::fs::create_dir_all(&assets_dir)?;
+        Ok(assets_dir)
     }
 }
