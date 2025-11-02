@@ -1,4 +1,4 @@
-use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd, CowStr, OffsetIter};
+use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 
 /// Información de estilo para aplicar a un rango de texto
 #[derive(Debug, Clone)]
@@ -48,7 +48,7 @@ impl MarkdownParser {
         let mut heading_range: Option<(usize, StyleType)> = None;
         let mut strong_range: Option<usize> = None;
         let mut emphasis_range: Option<usize> = None;
-        let mut code_range: Option<usize> = None;
+        let code_range: Option<usize> = None;
         let mut code_block_range: Option<usize> = None;
         let mut image_range: Option<(usize, String, String)> = None; // (start, src, alt)
         

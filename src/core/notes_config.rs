@@ -16,6 +16,9 @@ pub struct NotesConfig {
     /// Directorio de trabajo personalizado (notas y assets)
     #[serde(default)]
     pub workspace_dir: Option<String>,
+    /// Salida de audio preferida (sink de PulseAudio)
+    #[serde(default)]
+    pub audio_output_sink: Option<String>,
 }
 
 impl Default for NotesConfig {
@@ -32,6 +35,7 @@ impl NotesConfig {
             expanded_folders: Vec::new(),
             language: None,
             workspace_dir: None,
+            audio_output_sink: None,
         }
     }
     
@@ -131,6 +135,16 @@ impl NotesConfig {
     /// Establece el directorio de trabajo personalizado
     pub fn set_workspace_dir(&mut self, dir: Option<String>) {
         self.workspace_dir = dir;
+    }
+    
+    /// Obtiene la salida de audio preferida
+    pub fn get_audio_output_sink(&self) -> Option<&str> {
+        self.audio_output_sink.as_deref()
+    }
+    
+    /// Establece la salida de audio preferida
+    pub fn set_audio_output_sink(&mut self, sink: Option<String>) {
+        self.audio_output_sink = sink;
     }
     
     /// Ruta por defecto del archivo de configuración

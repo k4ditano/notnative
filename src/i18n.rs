@@ -105,6 +105,14 @@ impl I18n {
         translations.insert("select_workspace_folder", ("Seleccionar carpeta de trabajo", "Select workspace folder"));
         translations.insert("select", ("Seleccionar", "Select"));
         
+        // Audio
+        translations.insert("audio_output", ("Salida de audio", "Audio Output"));
+        translations.insert("audio_output_description", ("Seleccionar dispositivo de salida de audio", "Select audio output device"));
+        translations.insert("audio_output_default", ("Por defecto del sistema", "System default"));
+        translations.insert("audio_output_detecting", ("Detectando dispositivos...", "Detecting devices..."));
+        translations.insert("audio_output_changed", ("Salida de audio cambiada", "Audio output changed"));
+        translations.insert("audio_output_error", ("Error cambiando salida de audio", "Error changing audio output"));
+        
         // Atajos de teclado
         translations.insert("shortcuts_general", ("General", "General"));
         translations.insert("shortcuts_modes", ("Modos de edición", "Editing Modes"));
@@ -177,6 +185,7 @@ impl I18n {
         translations.insert("only_link", ("Solo enlace", "Only link"));
         translations.insert("transcribe_and_insert", ("Transcribir e insertar", "Transcribe and insert"));
         translations.insert("downloading_transcript", ("Descargando transcripción...", "Downloading transcript..."));
+        translations.insert("loading_transcript", ("Cargando transcripción...", "Loading transcript..."));
         translations.insert("transcript_error", ("Error al obtener transcripción", "Error fetching transcript"));
         translations.insert("transcript_unavailable", ("Transcripción no disponible para este video", "Transcript unavailable for this video"));
         translations.insert("transcript_section", ("📝 Transcripción", "📝 Transcript"));

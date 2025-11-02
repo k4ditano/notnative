@@ -2,6 +2,7 @@ mod app;
 mod core;
 mod i18n;
 mod youtube_server;
+mod youtube_transcript;
 
 use relm4::{
     RelmApp,

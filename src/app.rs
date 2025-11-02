@@ -3,12 +3,9 @@ use relm4::{ComponentParts, ComponentSender, RelmWidgetExt, SimpleComponent, com
 use gtk::glib;
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::collections::HashMap;
-use std::sync::Arc;
 
-use crate::core::{CommandParser, EditorAction, EditorMode, KeyModifiers, NoteBuffer, NotesDirectory, NoteFile, MarkdownParser, StyleType, NotesConfig, NotesDatabase, extract_tags, extract_all_tags, extract_inline_tags};
+use crate::core::{CommandParser, EditorAction, EditorMode, KeyModifiers, NoteBuffer, NotesDirectory, NoteFile, MarkdownParser, StyleType, NotesConfig, NotesDatabase, extract_all_tags};
 use crate::i18n::{I18n, Language};
-use gtk::{gdk, CssProvider, style_context_add_provider_for_display, STYLE_PROVIDER_PRIORITY_APPLICATION};
 
 #[derive(Debug, Clone)]
 struct ThemeColors {
@@ -169,6 +166,7 @@ pub enum AppMsg {
     ShowKeyboardShortcuts,
     ShowAboutDialog,
     ChangeLanguage(Language),
+    ReloadConfig, // Recargar configuración desde disco
     InsertImage, // Abrir diálogo para seleccionar imagen
     InsertImageFromPath(String), // Insertar imagen desde una ruta
     ProcessPastedText(String), // Procesar texto pegado (puede ser URL de imagen o YouTube)
@@ -176,6 +174,7 @@ pub enum AppMsg {
     AskTranscribeYouTube { url: String, video_id: String }, // Preguntar si transcribir video
     InsertYouTubeLink(String), // Insertar solo el enlace del video
     InsertYouTubeWithTranscript { video_id: String }, // Insertar video con transcripción
+    UpdateTranscript { video_id: String, transcript: String }, // Actualizar con transcripción obtenida
     MoveNoteToFolder { note_name: String, folder_name: Option<String> }, // Mover nota a carpeta
     ReorderNotes { source_name: String, target_name: String }, // Reordenar notas
     MoveFolder { folder_name: String, target_folder: Option<String> }, // Mover carpeta
@@ -894,58 +893,60 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
                 #[strong] link_spans,
                 #[strong] tag_spans_for_click,
                 move |gesture, _n_press, x, y| {
-                    let current_mode = *mode.borrow();
-                    if current_mode == EditorMode::Normal {
-                        // Convertir coordenadas de ventana a buffer
-                        let (buffer_x, buffer_y) = text_view.window_to_buffer_coords(
-                            gtk::TextWindowType::Widget,
-                            x as i32,
-                            y as i32
-                        );
-                        
-                        // Obtener el iter en la posición exacta (devuelve None si no hay texto)
-                        if let Some((iter, _trailing)) = text_view.iter_at_position(buffer_x, buffer_y) {
-                            let offset = iter.offset();
+                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        let current_mode = *mode.borrow();
+                        if current_mode == EditorMode::Normal {
+                            // Convertir coordenadas de ventana a buffer
+                            let (buffer_x, buffer_y) = text_view.window_to_buffer_coords(
+                                gtk::TextWindowType::Widget,
+                                x as i32,
+                                y as i32
+                            );
                             
-                            // Verificar si es un tag
-                            if let Some(tag_span) = tag_spans_for_click
-                                .borrow()
-                                .iter()
-                                .find(|span| offset >= span.start && offset < span.end)
-                            {
-                                gesture.set_state(gtk::EventSequenceState::Claimed);
-                                // Buscar notas con este tag
-                                sender.input(AppMsg::OpenSidebarAndFocus);
-                                sender.input(AppMsg::ToggleSearch(true));
-                                sender.input(AppMsg::SearchNotes(format!("#{}", tag_span.tag)));
-                                return;
-                            }
-                            
-                            // Verificar si es un link
-                            if let Some(link) = link_spans
-                                .borrow()
-                                .iter()
-                                .find(|span| offset >= span.start && offset < span.end)
-                            {
-                                gesture.set_state(gtk::EventSequenceState::Claimed);
-                                if let Err(err) = gtk::gio::AppInfo::launch_default_for_uri(
-                                    &link.url,
-                                    None::<&gtk::gio::AppLaunchContext>,
-                                ) {
-                                    eprintln!("Error al abrir enlace {}: {}", link.url, err);
+                            // Obtener el iter en la posición exacta (devuelve None si no hay texto)
+                            if let Some((iter, _trailing)) = text_view.iter_at_position(buffer_x, buffer_y) {
+                                let offset = iter.offset();
+                                
+                                // Verificar si es un tag
+                                if let Some(tag_span) = tag_spans_for_click
+                                    .borrow()
+                                    .iter()
+                                    .find(|span| offset >= span.start && offset < span.end)
+                                {
+                                    gesture.set_state(gtk::EventSequenceState::Claimed);
+                                    // Buscar notas con este tag
+                                    sender.input(AppMsg::OpenSidebarAndFocus);
+                                    sender.input(AppMsg::ToggleSearch(true));
+                                    sender.input(AppMsg::SearchNotes(format!("#{}", tag_span.tag)));
+                                    return;
                                 }
-                                return;
+                                
+                                // Verificar si es un link
+                                if let Some(link) = link_spans
+                                    .borrow()
+                                    .iter()
+                                    .find(|span| offset >= span.start && offset < span.end)
+                                {
+                                    gesture.set_state(gtk::EventSequenceState::Claimed);
+                                    if let Err(err) = gtk::gio::AppInfo::launch_default_for_uri(
+                                        &link.url,
+                                        None::<&gtk::gio::AppLaunchContext>,
+                                    ) {
+                                        eprintln!("Error al abrir enlace {}: {}", link.url, err);
+                                    }
+                                    return;
+                                }
                             }
                         }
-                    }
 
-                    // Obtener la posición del cursor después del clic
-                    let cursor_mark = text_buffer.get_insert();
-                    let cursor_iter = text_buffer.iter_at_mark(&cursor_mark);
-                    let cursor_pos = cursor_iter.offset() as usize;
-                    
-                    // Notificar al modelo para actualizar su cursor_position
-                    sender.input(AppMsg::UpdateCursorPosition(cursor_pos));
+                        // Obtener la posición del cursor después del clic
+                        let cursor_mark = text_buffer.get_insert();
+                        let cursor_iter = text_buffer.iter_at_mark(&cursor_mark);
+                        let cursor_pos = cursor_iter.offset() as usize;
+                        
+                        // Notificar al modelo para actualizar su cursor_position
+                        sender.input(AppMsg::UpdateCursorPosition(cursor_pos));
+                    })).map_err(|e| eprintln!("Panic capturado en click_controller: {:?}", e));
                 }
             )
         );
@@ -1267,49 +1268,51 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
         // Conectar click en carpetas para expandir/colapsar y cargar notas
         let folder_click = gtk::GestureClick::new();
         folder_click.connect_released(
-            gtk::glib::clone!(#[strong(rename_to = notes_list)] widgets.notes_list, #[strong] sender , move |gesture, _n_press, x, y| {
-                gesture.set_state(gtk::EventSequenceState::Claimed);
-                
-                // Obtener la fila bajo el click
-                if let Some(row) = notes_list.row_at_y(y as i32) {
-                    // Verificar si es una carpeta
-                    let is_folder = unsafe {
-                        row.data::<bool>("is_folder")
-                            .map(|data| *data.as_ref())
-                            .unwrap_or(false)
-                    };
+            gtk::glib::clone!(#[strong(rename_to = notes_list)] widgets.notes_list, #[strong] sender , move |gesture, _n_press, _x, y| {
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    gesture.set_state(gtk::EventSequenceState::Claimed);
                     
-                    if is_folder {
-                        if let Some(folder_name) = unsafe { row.data::<String>("folder_name").map(|d| d.as_ref().clone()) } {
-                            sender.input(AppMsg::ToggleFolder(folder_name));
-                        }
-                    } else {
-                        // Es una nota, cargarla
-                        // Primero intentar obtener el nombre de set_data (resultados de búsqueda)
-                        let note_name = unsafe {
-                            row.data::<String>("note_name")
-                                .map(|data| data.as_ref().clone())
+                    // Obtener la fila bajo el click
+                    if let Some(row) = notes_list.row_at_y(y as i32) {
+                        // Verificar si es una carpeta
+                        let is_folder = unsafe {
+                            row.data::<bool>("is_folder")
+                                .map(|data| *data.as_ref())
+                                .unwrap_or(false)
                         };
                         
-                        if let Some(name) = note_name {
-                            sender.input(AppMsg::LoadNote(name));
-                            return;
-                        }
-                        
-                        // Si no está en set_data, obtener desde el label (lista normal)
-                        if let Some(child) = row.child() {
-                            if let Ok(box_widget) = child.downcast::<gtk::Box>() {
-                                // El label es el segundo hijo (después del icono)
-                                if let Some(label_widget) = box_widget.first_child().and_then(|w| w.next_sibling()) {
-                                    if let Ok(label) = label_widget.downcast::<gtk::Label>() {
-                                        let note_name = label.text().to_string();
-                                        sender.input(AppMsg::LoadNote(note_name));
+                        if is_folder {
+                            if let Some(folder_name) = unsafe { row.data::<String>("folder_name").map(|d| d.as_ref().clone()) } {
+                                sender.input(AppMsg::ToggleFolder(folder_name));
+                            }
+                        } else {
+                            // Es una nota, cargarla
+                            // Primero intentar obtener el nombre de set_data (resultados de búsqueda)
+                            let note_name = unsafe {
+                                row.data::<String>("note_name")
+                                    .map(|data| data.as_ref().clone())
+                            };
+                            
+                            if let Some(name) = note_name {
+                                sender.input(AppMsg::LoadNote(name));
+                                return;
+                            }
+                            
+                            // Si no está en set_data, obtener desde el label (lista normal)
+                            if let Some(child) = row.child() {
+                                if let Ok(box_widget) = child.downcast::<gtk::Box>() {
+                                    // El label es el segundo hijo (después del icono)
+                                    if let Some(label_widget) = box_widget.first_child().and_then(|w| w.next_sibling()) {
+                                        if let Ok(label) = label_widget.downcast::<gtk::Label>() {
+                                            let note_name = label.text().to_string();
+                                            sender.input(AppMsg::LoadNote(note_name));
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
+                })).map_err(|e| eprintln!("Panic capturado en folder_click: {:?}", e));
             })
         );
         widgets.notes_list.add_controller(folder_click);
@@ -1391,27 +1394,29 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
         right_click.set_button(3); // Botón derecho
         right_click.connect_released(
             gtk::glib::clone!(#[strong(rename_to = notes_list)] widgets.notes_list, #[strong] sender , move |_, _n_press, x, y| {
-                // Obtener la fila bajo el click
-                if let Some(row) = notes_list.row_at_y(y as i32) {
-                    if let Some(child) = row.child() {
-                        if let Ok(box_widget) = child.downcast::<gtk::Box>() {
-                            // Buscar el label (nota o carpeta)
-                            let mut current_child = box_widget.first_child();
-                            
-                            while let Some(widget) = current_child {
-                                let next = widget.next_sibling();
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    // Obtener la fila bajo el click
+                    if let Some(row) = notes_list.row_at_y(y as i32) {
+                        if let Some(child) = row.child() {
+                            if let Ok(box_widget) = child.downcast::<gtk::Box>() {
+                                // Buscar el label (nota o carpeta)
+                                let mut current_child = box_widget.first_child();
                                 
-                                if let Ok(label) = widget.clone().downcast::<gtk::Label>() {
-                                    let item_name = label.text().to_string();
-                                    let is_folder = label.has_css_class("heading");
-                                    sender.input(AppMsg::ShowContextMenu(x, y, item_name, is_folder));
-                                    break;
+                                while let Some(widget) = current_child {
+                                    let next = widget.next_sibling();
+                                    
+                                    if let Ok(label) = widget.clone().downcast::<gtk::Label>() {
+                                        let item_name = label.text().to_string();
+                                        let is_folder = label.has_css_class("heading");
+                                        sender.input(AppMsg::ShowContextMenu(x, y, item_name, is_folder));
+                                        break;
+                                    }
+                                    current_child = next;
                                 }
-                                current_child = next;
                             }
                         }
                     }
-                }
+                })).map_err(|e| eprintln!("Panic capturado en right_click: {:?}", e));
             })
         );
         widgets.notes_list.add_controller(right_click);
@@ -1534,11 +1539,10 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
                 // Si estamos cerrando el sidebar, devolver foco al editor
                 if !self.sidebar_visible {
                     let text_view = self.text_view.clone();
-                    gtk::glib::source::timeout_add_local(
+                    gtk::glib::timeout_add_local_once(
                         std::time::Duration::from_millis(160),
                         move || {
                             text_view.grab_focus();
-                            gtk::glib::ControlFlow::Break
                         }
                     );
                 }
@@ -1552,7 +1556,7 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
                 
                 // Dar foco al ListBox después de un pequeño delay para que termine la animación
                 let notes_list = self.notes_list.clone();
-                gtk::glib::source::timeout_add_local(
+                gtk::glib::timeout_add_local_once(
                     std::time::Duration::from_millis(160),
                     move || {
                         notes_list.grab_focus();
@@ -1562,7 +1566,6 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
                                 notes_list.select_row(Some(&first_row));
                             }
                         }
-                        gtk::glib::ControlFlow::Break
                     }
                 );
             }
@@ -2060,6 +2063,16 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
                 self.update_ui_language(&sender);
             }
             
+            AppMsg::ReloadConfig => {
+                // Recargar configuración desde disco
+                if let Ok(config) = NotesConfig::load(NotesConfig::default_path()) {
+                    self.notes_config = config;
+                    println!("Configuración recargada desde disco");
+                } else {
+                    eprintln!("Error recargando configuración");
+                }
+            }
+            
             AppMsg::InsertImage => {
                 self.show_insert_image_dialog(&sender);
             }
@@ -2092,6 +2105,9 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
             }
             AppMsg::InsertYouTubeWithTranscript { video_id } => {
                 self.insert_youtube_with_transcript(&video_id, &sender);
+            }
+            AppMsg::UpdateTranscript { video_id, transcript } => {
+                self.update_transcript(&video_id, &transcript, &sender);
             }
             AppMsg::MoveNoteToFolder { note_name, folder_name } => {
                 self.move_note_to_folder(&note_name, folder_name.as_deref(), &sender);
@@ -2383,8 +2399,8 @@ impl MainApp {
                     let sender_clone = sender.clone();
                     let text_buffer = self.text_buffer.clone();
                     let text_buffer_fallback = self.text_buffer.clone();
-                    let mut buffer = self.buffer.clone();
-                    let mut buffer_fallback = self.buffer.clone();
+                    let buffer = self.buffer.clone();
+                    let buffer_fallback = self.buffer.clone();
                     let cursor_pos = self.cursor_position;
                     
                     clipboard.read_texture_async(
@@ -3155,6 +3171,7 @@ impl MainApp {
                 settings.set_media_playback_requires_user_gesture(false);
                 settings.set_enable_media_stream(true);
                 settings.set_enable_webgl(true);
+                settings.set_enable_webaudio(true);
                 settings.set_enable_write_console_messages_to_stdout(true);
                 settings.set_allow_universal_access_from_file_urls(true);
                 settings.set_allow_file_access_from_file_urls(true);
@@ -3248,6 +3265,7 @@ fn process_youtube_videos_async_with_spans(
             settings.set_media_playback_requires_user_gesture(false);
             settings.set_enable_media_stream(true);
             settings.set_enable_webgl(true);
+            settings.set_enable_webaudio(true);
             settings.set_enable_write_console_messages_to_stdout(true);
             settings.set_allow_universal_access_from_file_urls(true);
             settings.set_allow_file_access_from_file_urls(true);
@@ -5635,26 +5653,102 @@ impl MainApp {
     }
     
     /// Inserta un enlace de YouTube con transcripción
-    /// Por ahora solo inserta el enlace, la transcripción se implementará más adelante
     fn insert_youtube_with_transcript(&mut self, video_id: &str, sender: &ComponentSender<Self>) {
+        let youtube_url = format!("https://www.youtube.com/watch?v={}", video_id);
         let i18n = self.i18n.borrow();
         
-        // Por ahora, insertar solo el enlace con una nota sobre la transcripción
-        let youtube_url = format!("https://www.youtube.com/watch?v={}", video_id);
-        let markdown_syntax = format!("[🎥 Ver video en YouTube]({})\n\n## {}\n\n_{}_\n\n", 
-            youtube_url,
-            i18n.t("transcript_section"),
-            i18n.t("transcript_unavailable"));
+        // Obtener traducciones
+        let transcript_title = i18n.t("transcript_section");
+        let loading_text = i18n.t("downloading_transcript");
+        drop(i18n); // Liberar el borrow antes de modificar el buffer
         
-        self.buffer.insert(self.cursor_position, &markdown_syntax);
-        self.cursor_position += markdown_syntax.chars().count();
+        // Mostrar mensaje de carga inmediatamente
+        let loading_message = format!("[🎥 Ver video en YouTube]({})\n\n## {}\n\n_{}_\n\n", 
+            youtube_url, transcript_title, loading_text);
+        
+        self.buffer.insert(self.cursor_position, &loading_message);
+        self.cursor_position += loading_message.chars().count();
         self.has_unsaved_changes = true;
-        
-        // Sincronizar vista
         self.sync_to_view();
         self.update_status_bar(sender);
         
-        println!("Enlace de YouTube insertado (transcripción no disponible aún): {}", video_id);
+        // Obtener la transcripción en un hilo separado
+        let video_id_clone = video_id.to_string();
+        let sender_clone = sender.clone();
+        
+        std::thread::spawn(move || {
+            println!("Obteniendo transcripción para video: {}", video_id_clone);
+            
+            match crate::youtube_transcript::get_transcript(&video_id_clone) {
+                Ok(transcript) => {
+                    println!("Transcripción obtenida exitosamente ({} caracteres)", transcript.len());
+                    
+                    // Enviar mensaje para actualizar el contenido
+                    let video_id_for_update = video_id_clone.clone();
+                    gtk::glib::MainContext::default().invoke(move || {
+                        sender_clone.input(AppMsg::UpdateTranscript {
+                            video_id: video_id_for_update,
+                            transcript,
+                        });
+                    });
+                }
+                Err(e) => {
+                    eprintln!("Error obteniendo transcripción: {}", e);
+                    
+                    let video_id_for_error = video_id_clone.clone();
+                    let error_msg = format!("Error: {}", e);
+                    gtk::glib::MainContext::default().invoke(move || {
+                        sender_clone.input(AppMsg::UpdateTranscript {
+                            video_id: video_id_for_error,
+                            transcript: error_msg,
+                        });
+                    });
+                }
+            }
+        });
+        
+        println!("Solicitando transcripción para video: {}", video_id);
+    }
+    
+    /// Actualiza el contenido del buffer con la transcripción obtenida
+    fn update_transcript(&mut self, video_id: &str, transcript: &str, sender: &ComponentSender<Self>) {
+        let content = self.buffer.to_string();
+        let youtube_url = format!("https://www.youtube.com/watch?v={}", video_id);
+        let i18n = self.i18n.borrow();
+        
+        // Obtener traducciones
+        let transcript_title = i18n.t("transcript_section");
+        let loading_text = i18n.t("downloading_transcript");
+        drop(i18n); // Liberar el borrow
+        
+        // Buscar y reemplazar el mensaje de carga con la transcripción real
+        let loading_pattern = format!("[🎥 Ver video en YouTube]({})\n\n## {}\n\n_{}_\n\n", 
+            youtube_url, transcript_title, loading_text);
+        
+        let replacement = if transcript.starts_with("Error:") {
+            // Es un mensaje de error
+            format!("[🎥 Ver video en YouTube]({})\n\n## {}\n\n_{}_\n\n", 
+                youtube_url, transcript_title, transcript)
+        } else {
+            // Es la transcripción exitosa
+            format!("[🎥 Ver video en YouTube]({})\n\n## {}\n\n{}\n", 
+                youtube_url, transcript_title, transcript)
+        };
+        
+        if let Some(pos) = content.find(&loading_pattern) {
+            // Reemplazar el mensaje de carga con la transcripción
+            let new_content = content.replace(&loading_pattern, &replacement);
+            self.buffer = NoteBuffer::from_text(&new_content);
+            self.has_unsaved_changes = true;
+            
+            // Sincronizar vista
+            self.sync_to_view();
+            self.update_status_bar(sender);
+            
+            println!("Transcripción actualizada en el buffer");
+        } else {
+            println!("No se encontró el patrón de carga para reemplazar");
+        }
     }
     
     /// Descarga una imagen desde una URL y la guarda en assets
@@ -5974,6 +6068,88 @@ impl MainApp {
         markdown_box.append(&markdown_switch_box);
         
         content_box.append(&markdown_box);
+        
+        content_box.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+        
+        // Sección de Salida de Audio
+        let audio_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(8)
+            .build();
+        
+        let audio_label = gtk::Label::builder()
+            .label(&i18n.t("audio_output"))
+            .halign(gtk::Align::Start)
+            .build();
+        audio_label.add_css_class("heading");
+        audio_box.append(&audio_label);
+        
+        let audio_description = gtk::Label::builder()
+            .label(&i18n.t("audio_output_description"))
+            .halign(gtk::Align::Start)
+            .wrap(true)
+            .build();
+        audio_description.add_css_class("dim-label");
+        audio_box.append(&audio_description);
+        
+        // Dropdown de salidas de audio
+        let sinks = self.get_available_audio_sinks();
+        
+        if !sinks.is_empty() {
+            let sink_names: Vec<String> = sinks.iter().map(|(_, desc)| desc.clone()).collect();
+            let sink_ids: Vec<String> = sinks.iter().map(|(id, _)| id.clone()).collect();
+            
+            let audio_dropdown = gtk::DropDown::from_strings(&sink_names.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+            
+            // Seleccionar la salida actual
+            let current_sink = self.notes_config.get_audio_output_sink();
+            if let Some(current) = current_sink {
+                if let Some(pos) = sink_ids.iter().position(|id| id == &current) {
+                    audio_dropdown.set_selected(pos as u32);
+                }
+            }
+            
+            let sender_clone = sender.clone();
+            audio_dropdown.connect_selected_notify(move |dropdown| {
+                let selected = dropdown.selected() as usize;
+                if selected < sink_ids.len() {
+                    let sink_id = &sink_ids[selected];
+                    
+                    // Aplicar el cambio usando pactl
+                    let success = MainApp::set_default_audio_sink(sink_id);
+                    
+                    if success {
+                        // Cargar configuración actual, modificarla y guardarla
+                        if let Ok(mut config) = NotesConfig::load(NotesConfig::default_path()) {
+                            config.set_audio_output_sink(Some(sink_id.clone()));
+                            
+                            if let Err(e) = config.save(NotesConfig::default_path()) {
+                                eprintln!("Error guardando configuración de audio: {}", e);
+                            } else {
+                                println!("Configuración de audio guardada: {}", sink_id);
+                                // Recargar la configuración en memoria
+                                sender_clone.input(AppMsg::ReloadConfig);
+                            }
+                        } else {
+                            eprintln!("Error cargando configuración para actualizar audio");
+                        }
+                    } else {
+                        eprintln!("Error al cambiar la salida de audio");
+                    }
+                }
+            });
+            
+            audio_box.append(&audio_dropdown);
+        } else {
+            let no_sinks_label = gtk::Label::builder()
+                .label("No se encontraron salidas de audio disponibles")
+                .halign(gtk::Align::Start)
+                .build();
+            no_sinks_label.add_css_class("dim-label");
+            audio_box.append(&no_sinks_label);
+        }
+        
+        content_box.append(&audio_box);
         
         // Botón cerrar
         let button_box = gtk::Box::builder()
@@ -6784,6 +6960,69 @@ impl MainApp {
 
             // Refrescar el sidebar
             sender.input(AppMsg::RefreshSidebar);
+        }
+    }
+
+    /// Obtiene la lista de salidas de audio disponibles usando pactl
+    fn get_available_audio_sinks(&self) -> Vec<(String, String)> {
+        let output = std::process::Command::new("pactl")
+            .arg("list")
+            .arg("sinks")
+            .output();
+        
+        match output {
+            Ok(output) if output.status.success() => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                self.parse_pactl_sinks_output(&stdout)
+            }
+            _ => {
+                eprintln!("Error ejecutando pactl list sinks");
+                Vec::new()
+            }
+        }
+    }
+    
+    /// Parsea la salida de 'pactl list sinks' para extraer nombres y descripciones
+    fn parse_pactl_sinks_output(&self, output: &str) -> Vec<(String, String)> {
+        let mut sinks = Vec::new();
+        let mut current_sink = None;
+        let mut current_description = None;
+        
+        for line in output.lines() {
+            let line = line.trim();
+            
+            if line.starts_with("Name: ") {
+                // Guardar el sink anterior si existe
+                if let (Some(name), Some(desc)) = (current_sink.take(), current_description.take()) {
+                    sinks.push((name, desc));
+                }
+                
+                // Extraer el nombre del nuevo sink
+                current_sink = Some(line[6..].to_string());
+            } else if line.starts_with("Description: ") {
+                // Extraer la descripción
+                current_description = Some(line[13..].to_string());
+            }
+        }
+        
+        // Guardar el último sink
+        if let (Some(name), Some(desc)) = (current_sink, current_description) {
+            sinks.push((name, desc));
+        }
+        
+        sinks
+    }
+    
+    /// Establece la salida de audio por defecto usando pactl
+    fn set_default_audio_sink(sink_name: &str) -> bool {
+        let output = std::process::Command::new("pactl")
+            .arg("set-default-sink")
+            .arg(sink_name)
+            .output();
+        
+        match output {
+            Ok(output) => output.status.success(),
+            Err(_) => false,
         }
     }
 }
