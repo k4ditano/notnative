@@ -196,6 +196,40 @@ git commit -m "Update to v0.2.0"
 git push
 ```
 
+### Actualización rápida para v0.1.1 (AHORA)
+
+```bash
+# 1. Clonar el repo AUR si no lo tienes
+git clone ssh://aur@aur.archlinux.org/notnative-app.git ~/notnative-app-aur
+cd ~/notnative-app-aur
+
+# 2. Copiar el PKGBUILD actualizado
+cp ~/Programacion/notnative/notnative-app/PKGBUILD.aur ./PKGBUILD
+cp ~/Programacion/notnative/notnative-app/disable-bundled-sqlite.patch ./
+
+# 3. Actualizar checksums
+updpkgsums
+
+# 4. Probar build
+makepkg -scf
+
+# 5. Si funciona, instalar para probar
+makepkg -sfi
+
+# 6. Regenerar .SRCINFO
+makepkg --printsrcinfo > .SRCINFO
+
+# 7. Commit y push
+git add PKGBUILD .SRCINFO disable-bundled-sqlite.patch
+git commit -m "Update to v0.1.1 - Fix Omarchy theme loading
+
+- Fixed theme not loading when installed from AUR
+- Improved CSS loading order
+- Updated README with English translation
+- Added troubleshooting guide"
+git push
+```
+
 ## Estructura de archivos en AUR
 
 ```
