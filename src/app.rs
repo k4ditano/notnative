@@ -419,6 +419,7 @@ impl SimpleComponent for MainApp {
                                 set_popover = &gtk::Popover {
                                     add_css_class: "tags-popover",
                                     set_autohide: true,
+                                    set_size_request: (220, -1),
 
                                     #[wrap(Some)]
                                     set_child = &gtk::Box {
@@ -454,33 +455,35 @@ impl SimpleComponent for MainApp {
                                     add_css_class: "tags-popover",
                                     set_autohide: true,
                                     set_has_arrow: false,
-                                    set_size_request: (300, 400),
+                                    set_size_request: (320, 360),
                                     set_default_widget: gtk::Widget::NONE,
 
                                     #[wrap(Some)]
                                     set_child = &gtk::ScrolledWindow {
-                                        set_width_request: 300,
-                                        set_height_request: 400,
-                                        set_max_content_width: 300,
-                                        set_max_content_height: 400,
-                                        set_min_content_width: 300,
-                                        set_min_content_height: 400,
+                                        set_width_request: 320,
+                                        set_height_request: 360,
+                                        set_max_content_width: 320,
+                                        set_max_content_height: 360,
+                                        set_min_content_width: 320,
+                                        set_min_content_height: 360,
                                         set_propagate_natural_height: false,
                                         set_propagate_natural_width: false,
                                         set_policy: (gtk::PolicyType::Never, gtk::PolicyType::Automatic),
                                         set_hscrollbar_policy: gtk::PolicyType::Never,
                                         set_vscrollbar_policy: gtk::PolicyType::Automatic,
                                         set_kinetic_scrolling: true,
-                                        set_overlay_scrolling: true,
+                                        set_overlay_scrolling: false,
+                                        set_hexpand: false,
+                                        set_vexpand: false,
 
                                         #[wrap(Some)]
                                         set_child = &gtk::Box {
                                             set_orientation: gtk::Orientation::Vertical,
                                             set_spacing: 8,
                                             set_margin_all: 12,
+                                            set_width_request: 296,
                                             set_hexpand: false,
                                             set_vexpand: false,
-                                            set_width_request: 276,
 
                                             append = &gtk::Label {
                                                 set_markup: "<b>TODOs</b>",
@@ -718,6 +721,7 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
         completion_popover.set_parent(&widgets.text_view);
         completion_popover.add_css_class("tag-completion");
         completion_popover.set_autohide(false);
+        completion_popover.set_size_request(200, 160); // Tamaño fijo para evitar recalculos
         completion_popover.set_child(Some(&scrolled));
 
         // Reproductor de música (se inicializará bajo demanda)
@@ -1770,47 +1774,6 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
                         );
                         return gtk::glib::Propagation::Stop;
                     }
-                    "Down" | "Up" => {
-                        // Obtener la fila seleccionada actual
-                        let current_row = notes_list_for_nav.selected_row();
-
-                        if key_name == "Down" {
-                            // Navegar hacia abajo
-                            if let Some(row) = current_row {
-                                if let Some(next) = row.next_sibling() {
-                                    if let Ok(next_row) = next.downcast::<gtk::ListBoxRow>() {
-                                        if next_row.is_selectable() {
-                                            notes_list_for_nav.select_row(Some(&next_row));
-                                            return gtk::glib::Propagation::Stop;
-                                        }
-                                    }
-                                }
-                            } else {
-                                // Si no hay selección, seleccionar la primera fila
-                                if let Some(first_child) = notes_list_for_nav.first_child() {
-                                    if let Ok(first_row) = first_child.downcast::<gtk::ListBoxRow>()
-                                    {
-                                        if first_row.is_selectable() {
-                                            notes_list_for_nav.select_row(Some(&first_row));
-                                            return gtk::glib::Propagation::Stop;
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            // Navegar hacia arriba
-                            if let Some(row) = current_row {
-                                if let Some(prev) = row.prev_sibling() {
-                                    if let Ok(prev_row) = prev.downcast::<gtk::ListBoxRow>() {
-                                        if prev_row.is_selectable() {
-                                            notes_list_for_nav.select_row(Some(&prev_row));
-                                            return gtk::glib::Propagation::Stop;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
                     "Return" => {
                         // Activar la fila seleccionada con Enter
                         if let Some(row) = notes_list_for_nav.selected_row() {
@@ -2208,6 +2171,9 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
             #[strong]
             sender,
             move |_controller, keyval, _keycode, _modifiers| {
+                if !notes_list.has_focus() {
+                    return gtk::glib::Propagation::Proceed;
+                }
                 let key_name = keyval.name().map(|s| s.to_string()).unwrap_or_default();
 
                 match key_name.as_str() {
@@ -2801,7 +2767,10 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
                     }
 
                     // Actualizar el texto del search entry
-                    self.search_entry.set_text(&query);
+                    if self.search_entry.text().as_str() != query {
+                        self.search_entry.set_text(&query);
+                        self.search_entry.set_position(-1); // Mantener cursor al final en actualizaciones externas
+                    }
 
                     // Realizar búsqueda
                     self.perform_search(&query, &sender);
