@@ -1,6 +1,6 @@
 pkgbase = notnative-app
 	pkgdesc = Note-taking application with Vim-like keybindings
-	pkgver = 0.1.3
+	pkgver = 0.1.4
 	pkgrel = 1
 	url = https://github.com/k4ditano/notnative-app
 	arch = x86_64
@@ -17,9 +17,7 @@ pkgbase = notnative-app
 	depends = sqlite
 	depends = mpv
 	depends = mujs
-	source = notnative-app-0.1.3.tar.gz::https://github.com/k4ditano/notnative-app/archive/refs/tags/v0.1.3.tar.gz
-	source = mujs-linking.patch
-	sha256sums = SKIP
+	source = notnative-app-0.1.4.tar.gz::https://github.com/k4ditano/notnative-app/archive/refs/tags/v0.1.4.tar.gz
 	sha256sums = SKIP
 
 pkgname = notnative-app
