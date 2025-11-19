@@ -312,10 +312,11 @@ pub enum AppMsg {
     ShowAboutDialog,
     ShowMCPServerInfo,
     ChangeLanguage(Language),
-    ReloadConfig,                // Recargar configuración desde disco
-    InsertImage,                 // Abrir diálogo para seleccionar imagen
+    SetStartInBackground(bool), // Nuevo: Configurar inicio en segundo plano
+    ReloadConfig,               // Recargar configuración desde disco
+    InsertImage,                // Abrir diálogo para seleccionar imagen
     InsertImageFromPath(String), // Insertar imagen desde una ruta
-    ProcessPastedText(String),   // Procesar texto pegado (puede ser URL de imagen o YouTube)
+    ProcessPastedText(String),  // Procesar texto pegado (puede ser URL de imagen o YouTube)
     ToggleTodo {
         line_number: usize,
         new_state: bool,
@@ -324,7 +325,7 @@ pub enum AppMsg {
         url: String,
         video_id: String,
     }, // Preguntar si transcribir video
-    InsertYouTubeLink(String),   // Insertar solo el enlace del video
+    InsertYouTubeLink(String),  // Insertar solo el enlace del video
     InsertYouTubeWithTranscript {
         video_id: String,
     }, // Insertar video con transcripción
@@ -332,7 +333,7 @@ pub enum AppMsg {
         video_id: String,
         transcript: String,
     }, // Actualizar con transcripción obtenida
-    ScrollToAnchor(String),      // Hacer scroll a un heading por su ID (anchor link)
+    ScrollToAnchor(String),     // Hacer scroll a un heading por su ID (anchor link)
     MoveNoteToFolder {
         note_name: String,
         folder_name: Option<String>,
@@ -3810,6 +3811,21 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
         ));
         model.mode_label.add_controller(mode_click);
 
+        // Verificar si debe iniciar en segundo plano
+        let start_in_background = model.notes_config.borrow().get_start_in_background();
+        if start_in_background {
+            widgets.main_window.set_visible(false);
+            model
+                .window_visible
+                .store(false, std::sync::atomic::Ordering::Relaxed);
+            println!("Iniciando en segundo plano (minimizado)");
+        }
+
+        // Sincronizar estado de autostart (asegurar que el archivo .desktop exista si está habilitado)
+        if let Err(e) = Self::manage_autostart(start_in_background) {
+            eprintln!("Error sincronizando autostart al inicio: {}", e);
+        }
+
         ComponentParts { model, widgets }
     }
 
@@ -5555,6 +5571,25 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
 
             AppMsg::ShowMCPServerInfo => {
                 self.show_mcp_server_info_dialog();
+            }
+
+            AppMsg::SetStartInBackground(enabled) => {
+                self.notes_config
+                    .borrow_mut()
+                    .set_start_in_background(enabled);
+                if let Err(e) = self.notes_config.borrow().save(NotesConfig::default_path()) {
+                    eprintln!(
+                        "Error guardando configuración de inicio en segundo plano: {}",
+                        e
+                    );
+                }
+
+                // Gestionar archivo de autostart en Linux
+                if let Err(e) = Self::manage_autostart(enabled) {
+                    eprintln!("Error gestionando autostart: {}", e);
+                }
+
+                println!("Inicio en segundo plano configurado a: {}", enabled);
             }
 
             AppMsg::ChangeLanguage(new_language) => {
@@ -7702,6 +7737,48 @@ Las notas se guardan automáticamente en: ~/.local/share/notnative/notes/
 }
 
 impl MainApp {
+    /// Gestiona la entrada de autostart en Linux
+    fn manage_autostart(enable: bool) -> std::io::Result<()> {
+        let home_dir = std::env::var("HOME").map_err(std::io::Error::other)?;
+        let autostart_dir = std::path::PathBuf::from(format!("{}/.config/autostart", home_dir));
+        let desktop_file_path = autostart_dir.join("notnative.desktop");
+
+        if enable {
+            // Asegurar que el directorio existe
+            if !autostart_dir.exists() {
+                std::fs::create_dir_all(&autostart_dir)?;
+            }
+
+            // Obtener ruta del ejecutable actual
+            let current_exe = std::env::current_exe()?;
+            let exe_path = current_exe.to_string_lossy();
+
+            // Contenido del archivo .desktop
+            let content = format!(
+                "[Desktop Entry]\n\
+                Name=NotNative\n\
+                Comment=Note-taking application with Vim-like keybindings\n\
+                Exec={}\n\
+                Icon=notnative\n\
+                Terminal=false\n\
+                Type=Application\n\
+                Categories=Office;TextEditor;Utility;\n\
+                Keywords=notes;markdown;vim;editor;\n\
+                StartupNotify=true\n\
+                X-GNOME-Autostart-enabled=true\n",
+                exe_path
+            );
+
+            std::fs::write(&desktop_file_path, content)?;
+            println!("✅ Autostart habilitado: {:?}", desktop_file_path);
+        } else if desktop_file_path.exists() {
+            std::fs::remove_file(&desktop_file_path)?;
+            println!("✅ Autostart deshabilitado: {:?}", desktop_file_path);
+        }
+
+        Ok(())
+    }
+
     /// Búsqueda difusa simple: verifica si los caracteres del patrón aparecen en orden
     fn fuzzy_match(text: &str, pattern: &str) -> bool {
         let mut pattern_chars = pattern.chars();
@@ -14314,6 +14391,54 @@ impl MainApp {
         workspace_box.append(&location_box);
 
         content_box.append(&workspace_box);
+
+        content_box.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+
+        // Sección de Inicio en segundo plano
+        let background_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(8)
+            .build();
+
+        let background_label = gtk::Label::builder()
+            .label(&i18n.t("start_in_background"))
+            .halign(gtk::Align::Start)
+            .build();
+        background_label.add_css_class("heading");
+        background_box.append(&background_label);
+
+        let background_switch_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .spacing(12)
+            .build();
+
+        let background_desc = gtk::Label::builder()
+            .label(&i18n.t("start_in_background_desc"))
+            .halign(gtk::Align::Start)
+            .hexpand(true)
+            .wrap(true)
+            .build();
+        background_desc.add_css_class("dim-label");
+
+        let background_switch = gtk::Switch::builder()
+            .active(self.notes_config.borrow().get_start_in_background())
+            .valign(gtk::Align::Center)
+            .build();
+
+        background_switch.connect_state_set(gtk::glib::clone!(
+            #[strong]
+            sender,
+            move |_, state| {
+                sender.input(AppMsg::SetStartInBackground(state));
+                gtk::glib::Propagation::Proceed
+            }
+        ));
+
+        background_switch_box.append(&background_desc);
+        background_switch_box.append(&background_switch);
+        background_box.append(&background_switch_box);
+
+        content_box.append(&background_box);
 
         content_box.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
 

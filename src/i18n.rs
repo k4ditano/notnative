@@ -154,6 +154,18 @@ impl I18n {
             ),
         );
 
+        translations.insert(
+            "start_in_background",
+            ("Iniciar en segundo plano", "Start in background"),
+        );
+        translations.insert(
+            "start_in_background_desc",
+            (
+                "Iniciar la aplicación minimizada en la bandeja del sistema",
+                "Start the application minimized to the system tray",
+            ),
+        );
+
         // Workspace
         translations.insert("workspace", ("Directorio de trabajo", "Workspace"));
         translations.insert(

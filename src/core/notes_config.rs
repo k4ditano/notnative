@@ -84,6 +84,9 @@ pub struct NotesConfig {
     /// Última nota abierta
     #[serde(default)]
     pub last_opened_note: Option<String>,
+    /// Iniciar aplicación en segundo plano (minimizado a la bandeja)
+    #[serde(default)]
+    pub start_in_background: bool,
     /// Configuración del asistente AI
     #[serde(default)]
     pub ai_config: AIConfig,
@@ -108,6 +111,7 @@ impl NotesConfig {
             workspace_dir: None,
             audio_output_sink: None,
             last_opened_note: None,
+            start_in_background: false,
             ai_config: AIConfig::default(),
             embedding_config: EmbeddingConfig::default(),
         }
@@ -229,6 +233,16 @@ impl NotesConfig {
     /// Establece la última nota abierta
     pub fn set_last_opened_note(&mut self, note: Option<String>) {
         self.last_opened_note = note;
+    }
+
+    /// Obtiene si debe iniciar en segundo plano
+    pub fn get_start_in_background(&self) -> bool {
+        self.start_in_background
+    }
+
+    /// Establece si debe iniciar en segundo plano
+    pub fn set_start_in_background(&mut self, start_in_background: bool) {
+        self.start_in_background = start_in_background;
     }
 
     /// Ruta por defecto del archivo de configuración
