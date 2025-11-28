@@ -1931,6 +1931,8 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
         context_box.add_css_class("sidebar");
         context_box.add_css_class("chat-context-panel");
         context_box.set_width_request(200);
+        context_box.set_can_focus(false);
+        context_box.set_focusable(false);
 
         // Header con botones (igual que el sidebar normal)
         let context_header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -1953,11 +1955,15 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
         context_scroll.set_hexpand(true);
         context_scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
         context_scroll.add_css_class("chat-context-scroll");
+        context_scroll.set_can_focus(false);
+        context_scroll.set_focusable(false);
 
         let chat_context_list = gtk::ListBox::new();
         chat_context_list.add_css_class("navigation-sidebar");
         chat_context_list.add_css_class("chat-context-list");
         chat_context_list.set_selection_mode(gtk::SelectionMode::None);
+        chat_context_list.set_can_focus(false); // No capturar foco para que ESC funcione
+        chat_context_list.set_focusable(false);
         context_scroll.set_child(Some(&chat_context_list));
         context_box.append(&context_scroll);
 
@@ -1968,12 +1974,14 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
         buttons_box.set_margin_end(8);
         buttons_box.set_margin_bottom(12);
         buttons_box.add_css_class("chat-context-actions");
+        buttons_box.set_can_focus(false);
+        buttons_box.set_focusable(false);
 
         let chat_attach_button = gtk::Button::builder()
             .icon_name("list-add-symbolic")
             .tooltip_text(&i18n.borrow().t("chat_attach_note"))
             .build();
-        chat_attach_button.set_can_focus(true);
+        chat_attach_button.set_can_focus(false); // No capturar foco para que ESC funcione
         chat_attach_button.add_css_class("flat");
         chat_attach_button.add_css_class("circular");
         chat_attach_button.add_css_class("chat-context-action");
@@ -1990,7 +1998,7 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
             .icon_name("edit-clear-symbolic")
             .tooltip_text(&i18n.borrow().t("chat_clear_context"))
             .build();
-        chat_clear_button.set_can_focus(true);
+        chat_clear_button.set_can_focus(false); // No capturar foco para que ESC funcione
         chat_clear_button.add_css_class("flat");
         chat_clear_button.add_css_class("circular");
         chat_clear_button.add_css_class("chat-context-action");
@@ -2007,7 +2015,7 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
             .icon_name("user-trash-symbolic")
             .tooltip_text(&i18n.borrow().t("chat_clear_history"))
             .build();
-        chat_history_button.set_can_focus(true);
+        chat_history_button.set_can_focus(false); // No capturar foco para que ESC funcione
         chat_history_button.add_css_class("flat");
         chat_history_button.add_css_class("circular");
         chat_history_button.add_css_class("chat-context-action");
@@ -2081,10 +2089,14 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
         history_scroll.set_vexpand(true);
         history_scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
         history_scroll.add_css_class("chat-history-scroll");
+        history_scroll.set_can_focus(false);
+        history_scroll.set_focusable(false);
 
         let chat_history_list = gtk::ListBox::new();
         chat_history_list.add_css_class("chat-history-list");
         chat_history_list.set_selection_mode(gtk::SelectionMode::None);
+        chat_history_list.set_can_focus(false);
+        chat_history_list.set_focusable(false);
         history_scroll.set_child(Some(&chat_history_list));
         chat_box.append(&history_scroll);
 
@@ -2201,8 +2213,9 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
             move |_controller, keyval, _keycode, modifiers| {
                 let key_name = keyval.name().map(|s| s.to_string()).unwrap_or_default();
 
-                // Si el popover de sugerencias está visible, manejar navegación especial
-                if chat_note_suggestions_popover.is_visible() {
+                // Si el popover de sugerencias está visible Y tiene contenido, manejar navegación especial
+                let popover_has_content = chat_note_suggestions_list.first_child().is_some();
+                if chat_note_suggestions_popover.is_visible() && popover_has_content {
                     match key_name.as_str() {
                         "Down" => {
                             let selected = chat_note_suggestions_list.selected_row();
@@ -2255,8 +2268,9 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
                             return gtk::glib::Propagation::Stop;
                         }
                         "Escape" => {
-                            // Cerrar popover
+                            // Cerrar popover y abandonar el modo chat en la misma pulsación
                             chat_note_suggestions_popover.popdown();
+                            sender.input(AppMsg::ExitChatMode);
                             return gtk::glib::Propagation::Stop;
                         }
                         _ => {
@@ -2266,8 +2280,10 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
                     }
                 }
 
-                // ESC: Salir del modo chat
+                // ESC: Salir del modo chat (popover cerrado o vacío)
                 if key_name == "Escape" {
+                    // Asegurar que el popover está cerrado
+                    chat_note_suggestions_popover.popdown();
                     sender.input(AppMsg::ExitChatMode);
                     return gtk::glib::Propagation::Stop;
                 }
@@ -2361,13 +2377,16 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
             move |_controller, keyval, _keycode, _modifiers| {
                 let key_name = keyval.name().map(|s| s.to_string()).unwrap_or_default();
 
-                // Solo procesar si no estamos en el input del chat
+                // Si estamos en el input del chat, dejar que su handler procese
                 if chat_input_view.has_focus() {
                     return gtk::glib::Propagation::Proceed;
                 }
 
-                // ESC: Salir del modo Chat AI y volver a Normal
+                // ESC: Mover foco al input del chat primero, luego salir
+                // Esto asegura un comportamiento consistente
                 if key_name == "Escape" {
+                    // Dar foco al input y salir del chat
+                    chat_input_view.grab_focus();
                     sender.input(AppMsg::ExitChatMode);
                     return gtk::glib::Propagation::Stop;
                 }
@@ -3098,6 +3117,30 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
             shortcuts.add_shortcut(shortcut);
         }
         widgets.main_window.add_controller(shortcuts);
+
+        // Controlador de Escape GLOBAL en fase CAPTURE para Chat AI
+        // Esto intercepta ESC antes de que cualquier otro widget lo procese
+        let global_escape_controller = gtk::EventControllerKey::new();
+        global_escape_controller.set_propagation_phase(gtk::PropagationPhase::Capture);
+        global_escape_controller.connect_key_pressed(gtk::glib::clone!(
+            #[strong]
+            sender,
+            #[strong]
+            mode,
+            move |_controller, keyval, _keycode, _modifiers| {
+                let key_name = keyval.name().map(|s| s.to_string()).unwrap_or_default();
+
+                // Solo interceptar Escape en modo ChatAI
+                if key_name == "Escape" && *mode.borrow() == EditorMode::ChatAI {
+                    println!("🔑 CAPTURE: Escape interceptado en modo ChatAI");
+                    sender.input(AppMsg::ExitChatMode);
+                    return gtk::glib::Propagation::Stop;
+                }
+
+                gtk::glib::Propagation::Proceed
+            }
+        ));
+        widgets.main_window.add_controller(global_escape_controller);
 
         // Conectar señal de cierre para minimizar a bandeja en lugar de cerrar
         widgets.main_window.connect_close_request(gtk::glib::clone!(
@@ -4987,20 +5030,31 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
                 }
 
                 // Cerrar popover de autocompletado con Escape o al salir de modo INSERT
-                if key == "Escape"
-                    || (current_mode != EditorMode::Insert
-                        && self.tag_completion_popup.is_visible())
+                // NOTA: Solo si NO estamos en modo ChatAI (ChatAI tiene su propio handler)
+                if current_mode != EditorMode::ChatAI
+                    && (key == "Escape"
+                        || (current_mode != EditorMode::Insert
+                            && self.tag_completion_popup.is_visible()))
                 {
                     self.tag_completion_popup.popdown();
                     *self.current_tag_prefix.borrow_mut() = None;
                 }
 
                 // Cerrar popover de menciones con Escape
-                if key == "Escape"
-                    || (current_mode != EditorMode::Insert && self.note_mention_popup.is_visible())
+                // NOTA: Solo si NO estamos en modo ChatAI (ChatAI tiene su propio handler)
+                if current_mode != EditorMode::ChatAI
+                    && (key == "Escape"
+                        || (current_mode != EditorMode::Insert
+                            && self.note_mention_popup.is_visible()))
                 {
                     self.note_mention_popup.popdown();
                     *self.current_mention_prefix.borrow_mut() = None;
+                }
+
+                // En modo ChatAI, Escape sale INMEDIATAMENTE (prioridad máxima)
+                if current_mode == EditorMode::ChatAI && key == "Escape" {
+                    sender.input(AppMsg::ExitChatMode);
+                    return;
                 }
 
                 // Atajo global: Ctrl+Shift+A para entrar al Chat AI desde cualquier modo
@@ -7731,6 +7785,13 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
             AppMsg::ExitChatMode => {
                 println!("👋 Saliendo del modo Chat AI...");
 
+                // Limpiar sugerencias de notas del chat para evitar estados inconsistentes
+                while let Some(child) = self.chat_note_suggestions_list.first_child() {
+                    self.chat_note_suggestions_list.remove(&child);
+                }
+                self.chat_note_suggestions_popover.popdown();
+                *self.chat_current_note_prefix.borrow_mut() = None;
+
                 *self.mode.borrow_mut() = EditorMode::Normal;
                 self.update_status_bar(&sender);
 
@@ -7741,6 +7802,15 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
 
                 // Ocultar sidebar de contexto del chat
                 self.chat_split_view.set_position(0);
+
+                // PRIMERO cambiar a la página del editor ANTES de sync_to_view
+                // Esto asegura que el WebView esté visible cuando recibe el contenido
+                self.content_stack.set_visible_child_name("editor");
+
+                // Invalidar cache para forzar re-renderizado del WebView
+                // Esto es necesario porque el WebView puede estar en estado "dormido"
+                *self.cached_source_text.borrow_mut() = None;
+                *self.cached_rendered_text.borrow_mut() = None;
 
                 // Recargar la nota actual por si hubo cambios mientras estábamos en el chat
                 if let Some(ref note) = self.current_note {
@@ -7765,11 +7835,37 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
                         println!(
                             "⚠️ Nota tiene cambios sin guardar, no se recarga al salir del chat"
                         );
+                        // Aún así sincronizar la vista para mostrar el contenido actual
+                        self.sync_to_view();
                     }
+                } else {
+                    // No hay nota cargada, pero aún así sincronizar
+                    self.sync_to_view();
                 }
 
-                // Cambiar a la página del editor en el Stack
-                self.content_stack.set_visible_child_name("editor");
+                // Forzar re-renderizado del WebView después de que GTK procese los cambios
+                // y asegurar que el WebView recibe el foco para que los keybindings funcionen
+                // Usamos múltiples intentos porque GTK puede tardar en procesar la transición
+                let webview = self.preview_webview.clone();
+                let mode = self.mode.clone();
+                let markdown_enabled = self.markdown_enabled;
+
+                for delay_ms in [50, 150, 300] {
+                    let webview_clone = webview.clone();
+                    let mode_clone = mode.clone();
+                    gtk::glib::timeout_add_local_once(
+                        std::time::Duration::from_millis(delay_ms),
+                        move || {
+                            if *mode_clone.borrow() == EditorMode::Normal && markdown_enabled {
+                                // Forzar un repaint del WebView
+                                webview_clone.queue_draw();
+                                // Dar foco al WebView para que los keybindings funcionen
+                                webview_clone.set_can_focus(true);
+                                webview_clone.grab_focus();
+                            }
+                        },
+                    );
+                }
 
                 // Re-seleccionar la nota actual en el sidebar si existe
                 if let Some(ref note) = self.current_note {
@@ -18448,7 +18544,7 @@ impl MainApp {
             .transient_for(&self.main_window)
             .modal(true)
             .program_name("NotNative")
-            .version("0.1.13")
+            .version("0.1.14")
             .comments(&i18n.t("app_description"))
             .website("https://github.com/k4ditano/notnative-app")
             .website_label(&i18n.t("website"))
@@ -20397,6 +20493,8 @@ impl MainApp {
                     remove_btn.add_css_class("flat");
                     remove_btn.add_css_class("circular");
                     remove_btn.add_css_class("chat-context-remove");
+                    remove_btn.set_can_focus(false);
+                    remove_btn.set_focusable(false);
 
                     let note_name = note.name().to_string();
                     let sender = self.app_sender.borrow().clone();
@@ -20407,7 +20505,12 @@ impl MainApp {
                     });
                     row.append(&remove_btn);
 
-                    self.chat_context_list.append(&row);
+                    let list_row = gtk::ListBoxRow::new();
+                    list_row.set_child(Some(&row));
+                    list_row.set_selectable(false);
+                    list_row.set_can_focus(false);
+                    list_row.set_focusable(false);
+                    self.chat_context_list.append(&list_row);
                 }
             }
         }
