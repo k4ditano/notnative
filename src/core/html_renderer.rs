@@ -142,6 +142,69 @@ impl HtmlRenderer {
     fn preprocess_markdown(&self, markdown: &str) -> String {
         let mut result = markdown.to_string();
 
+        // Procesar propiedades inline [campo::valor] y [campo:::valor]
+        // También soporta grupos: [campo1::val1, campo2:::val2]
+        // Procesamos línea por línea para preservar saltos de línea
+        let bracket_re = Regex::new(r"\[([^\]]+)\]").unwrap();
+        
+        let processed_lines: Vec<String> = result.lines().map(|line| {
+            // Verificar si la línea contiene algo que parece propiedad inline
+            if line.contains("::") && line.contains('[') {
+                let processed = bracket_re.replace_all(line, |caps: &regex::Captures| {
+                    let content = &caps[1];
+                    
+                    // Verificar si contiene :: (es una propiedad inline)
+                    if !content.contains("::") {
+                        // No es propiedad inline, devolver original
+                        return format!("[{}]", content);
+                    }
+                    
+                    // Procesar cada par key::value o key:::value separado por comas
+                    let prop_re = Regex::new(r"([^,:\s]+)(:::?)([^,]*)").unwrap();
+                    let mut html_parts: Vec<String> = Vec::new();
+                    let mut has_visible = false;
+                    
+                    for prop_cap in prop_re.captures_iter(content) {
+                        let key = prop_cap.get(1).map(|m| m.as_str()).unwrap_or("");
+                        let separator = prop_cap.get(2).map(|m| m.as_str()).unwrap_or("::");
+                        let value = prop_cap.get(3).map(|m| m.as_str().trim()).unwrap_or("");
+                        let is_hidden = separator == ":::";
+                        
+                        if !is_hidden {
+                            has_visible = true;
+                            html_parts.push(format!(
+                                r#"<span class="inline-property"><span class="prop-key">{}</span><span class="prop-value">{}</span></span>"#,
+                                key.trim(), value
+                            ));
+                        }
+                        // Las propiedades ocultas simplemente no se agregan
+                    }
+                    
+                    if has_visible {
+                        html_parts.join(" ")
+                    } else {
+                        // Todo oculto, no mostrar nada
+                        String::new()
+                    }
+                }).to_string();
+                
+                // Si la línea procesada solo contiene spans de propiedades (y espacios),
+                // envolverla en un div para forzar que sea su propia línea
+                let trimmed = processed.trim();
+                if trimmed.starts_with("<span class=\"inline-property\"") || 
+                   trimmed.starts_with("<div") || 
+                   trimmed.is_empty() {
+                    format!("<div class=\"inline-props-line\">{}</div>", processed)
+                } else {
+                    processed
+                }
+            } else {
+                line.to_string()
+            }
+        }).collect();
+        
+        result = processed_lines.join("\n");
+
         // Convertir [[nota]] a links especiales (placeholder que post-procesaremos)
         // URL-encode el nombre para manejar espacios y caracteres especiales
         let internal_link_re = Regex::new(r"\[\[([^\]]+)\]\]").unwrap();
@@ -563,6 +626,34 @@ a.tag-link {
 a.tag-link:hover {
     background-color: rgba(249, 226, 175, 0.3);
     border: none;
+}
+
+/* Propiedades inline [campo::valor] */
+.inline-property {
+    display: inline-flex;
+    align-items: center;
+    background: linear-gradient(135deg, rgba(137, 180, 250, 0.15) 0%, rgba(137, 180, 250, 0.08) 100%);
+    border: 1px solid rgba(137, 180, 250, 0.3);
+    border-radius: 6px;
+    padding: 2px 8px;
+    margin: 2px 4px;
+    font-size: 0.9em;
+    gap: 4px;
+    line-height: 1.4;
+}
+
+.inline-property .prop-key {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.inline-property .prop-value {
+    color: var(--fg-primary);
+}
+
+.inline-props-line {
+    display: block;
+    margin: 4px 0;
 }
 
 /* Recordatorios simples (con emojis) */

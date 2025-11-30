@@ -96,6 +96,9 @@ pub struct NotesConfig {
     /// Flag para saber si ya se completó el onboarding (crear nota de keybindings)
     #[serde(default)]
     pub onboarding_completed: bool,
+    /// Última versión que el usuario ha visto (para mostrar novedades en actualizaciones)
+    #[serde(default)]
+    pub last_seen_version: Option<String>,
 }
 
 impl Default for NotesConfig {
@@ -118,6 +121,7 @@ impl NotesConfig {
             ai_config: AIConfig::default(),
             embedding_config: EmbeddingConfig::default(),
             onboarding_completed: false,
+            last_seen_version: None,
         }
     }
 
@@ -382,5 +386,23 @@ impl NotesConfig {
     /// Marca el onboarding como completado
     pub fn set_onboarding_completed(&mut self, completed: bool) {
         self.onboarding_completed = completed;
+    }
+
+    /// Obtiene la última versión vista por el usuario
+    pub fn get_last_seen_version(&self) -> Option<&str> {
+        self.last_seen_version.as_deref()
+    }
+
+    /// Actualiza la última versión vista
+    pub fn set_last_seen_version(&mut self, version: &str) {
+        self.last_seen_version = Some(version.to_string());
+    }
+
+    /// Verifica si hay una nueva versión disponible comparando con la versión actual
+    pub fn is_new_version(&self, current_version: &str) -> bool {
+        match &self.last_seen_version {
+            None => true, // Primera vez o migración desde versión anterior
+            Some(last) => last != current_version,
+        }
     }
 }

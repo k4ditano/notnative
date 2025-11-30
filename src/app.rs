@@ -9,10 +9,11 @@ use std::rc::Rc;
 use crate::core::{
     CommandParser, EditorAction, EditorMode, HtmlRenderer, KeyModifiers, MarkdownParser,
     NoteBuffer, NoteFile, NotesConfig, NotesDatabase, NotesDirectory, PreviewTheme, SearchResult,
-    StyleType, extract_all_tags,
+    StyleType, extract_all_tags, Base, InlinePropertyParser,
 };
 use crate::i18n::{I18n, Language};
 use crate::mcp::{MCPToolCall, MCPToolResult};
+use crate::base_ui::BaseTableWidget;
 
 use crate::ai::memory::NoteMemory;
 use std::sync::Arc;
@@ -97,6 +98,14 @@ pub enum ThemePreference {
     Dark,
 }
 
+/// Panel activo en el sidebar estilo VS Code
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SidebarPanel {
+    #[default]
+    Notes,
+    Bases,
+}
+
 #[derive(Debug)]
 pub struct MainApp {
     theme: ThemePreference,
@@ -125,6 +134,19 @@ pub struct MainApp {
     split_view: gtk::Paned,
     notes_list: gtk::ListBox,
     sidebar_visible: bool,
+    active_panel: SidebarPanel,
+    // Widgets del sidebar estilo VS Code
+    activity_bar: gtk::Box,
+    sidebar_stack: gtk::Stack,
+    notes_panel_button: gtk::Button,
+    bases_panel_button: gtk::Button,
+    bases_list: gtk::ListBox,
+    // Vista de Base (tabla de notas con propiedades)
+    base_view_container: gtk::Box,
+    base_view_title: gtk::Label,
+    base_view_grid: gtk::Grid,
+    base_table_widget: Rc<RefCell<BaseTableWidget>>,
+    current_base_id: Rc<RefCell<Option<i64>>>,
     expanded_folders: std::collections::HashSet<String>,
     is_populating_list: Rc<RefCell<bool>>,
     is_syncing_to_gtk: Rc<RefCell<bool>>,
@@ -151,6 +173,12 @@ pub struct MainApp {
     note_mention_list: gtk::ListBox,
     current_mention_prefix: Rc<RefCell<Option<String>>>, // @ de nota que se está escribiendo
     just_completed_mention: Rc<RefCell<bool>>, // Bandera para evitar reabrir después de completar mención
+    // Sistema de autocompletado de propiedades inline [campo::
+    property_completion_popup: gtk::Popover,
+    property_completion_list: gtk::ListBox,
+    current_property_key: Rc<RefCell<Option<String>>>, // Clave de la propiedad actual [campo::
+    current_property_prefix: Rc<RefCell<Option<String>>>, // Prefijo del valor que se está escribiendo
+    just_completed_property: Rc<RefCell<bool>>, // Bandera para evitar reabrir después de completar
     search_toggle_button: gtk::Button,
     // Barra de búsqueda flotante estilo macOS
     floating_search_bar: gtk::Box,
@@ -173,7 +201,6 @@ pub struct MainApp {
     semantic_search_answer_visible: Rc<RefCell<bool>>, // Si la respuesta está visible
     i18n: Rc<RefCell<I18n>>,
     // Widgets para actualización dinámica de idioma
-    sidebar_toggle_button: gtk::Button,
     sidebar_notes_label: gtk::Label,
     new_note_button: gtk::Button,
     settings_button: gtk::MenuButton,
@@ -277,6 +304,13 @@ pub enum AppMsg {
     CloseSidebar,              // Cerrar sidebar si está abierto
     CloseSidebarAndOpenSearch, // Cerrar sidebar si está abierto y abrir búsqueda flotante
     OpenSidebarAndFocus,
+    // Panel del sidebar (estilo VS Code)
+    SwitchToPanel(SidebarPanel),
+    RefreshBasesPanel,
+    CreateNewBase,
+    LoadBase(String),
+    DeleteBase(String),
+    CloseBaseView,
     ShowCreateNoteDialog,
     ToggleFolder(String),
     ShowContextMenu(f64, f64, String, bool), // x, y, nombre, es_carpeta
@@ -329,6 +363,8 @@ pub enum AppMsg {
     CompleteTag(String),             // Completar tag seleccionado
     CheckNoteMention,                // Verificar si hay que mostrar autocompletado de @notas
     CompleteMention(String),         // Completar mención de nota
+    CheckPropertyCompletion,         // Verificar si hay que mostrar autocompletado de [campo::
+    CompleteProperty(String),        // Completar valor de propiedad inline
     CompleteChatNote(String),        // Completar mención de nota en chat
     ShowChatNoteSuggestions(String), // Mostrar sugerencias de notas en chat
     HideChatNoteSuggestions,         // Ocultar sugerencias de notas en chat
@@ -516,12 +552,7 @@ impl SimpleComponent for MainApp {
                 set_spacing: 0,
 
                 append = header_bar = &gtk::HeaderBar {
-                    pack_start = sidebar_toggle_button = &gtk::Button {
-                        set_icon_name: "view-list-symbolic",
-                        set_tooltip_text: Some("Mostrar/ocultar lista de notas"),
-                        add_css_class: "flat",
-                        connect_clicked => AppMsg::ToggleSidebar,
-                    },
+                    // El sidebar_toggle_button ya no es necesario, la activity bar siempre está visible
 
                     #[wrap(Some)]
                     set_title_widget = window_title = &gtk::Label {
@@ -529,338 +560,443 @@ impl SimpleComponent for MainApp {
                     },
                 },
 
-                append = split_view = &gtk::Paned {
+                // Contenedor principal horizontal: Activity Bar + Split View
+                append = &gtk::Box {
                     set_orientation: gtk::Orientation::Horizontal,
-                    set_position: 0,
                     set_vexpand: true,
-                    set_wide_handle: false,
-                    set_shrink_start_child: true,
-                    set_resize_start_child: false,
 
-                    #[wrap(Some)]
-                    set_start_child = &gtk::Box {
+                    // Activity Bar (barra de iconos estilo VS Code) - SIEMPRE VISIBLE
+                    append = activity_bar = &gtk::Box {
                         set_orientation: gtk::Orientation::Vertical,
                         set_spacing: 0,
-                        add_css_class: "sidebar",
-                        set_width_request: 200,
+                        add_css_class: "activity-bar",
+                        set_width_request: 32,
 
-                        append = &gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 8,
-                            set_margin_all: 12,
-
-                            append = sidebar_notes_label = &gtk::Label {
-                                set_label: "Notas",
-                                set_xalign: 0.0,
-                                set_hexpand: true,
-                                add_css_class: "heading",
-                            },
-
-                            append = search_toggle_button = &gtk::Button {
-                                set_icon_name: "system-search-symbolic",
-                                set_tooltip_text: Some("Buscar (Ctrl+F)"),
-                                add_css_class: "flat",
-                                add_css_class: "circular",
-                                connect_clicked[sender] => move |_| {
-                                    // Cerrar sidebar (solo si está abierto, se maneja internamente)
-                                    sender.input(AppMsg::CloseSidebarAndOpenSearch);
-                                },
-                            },
-
-                            append = new_note_button = &gtk::Button {
-                                set_icon_name: "list-add-symbolic",
-                                set_tooltip_text: Some("Nueva nota"),
-                                add_css_class: "flat",
-                                add_css_class: "circular",
-                                connect_clicked => AppMsg::ShowCreateNoteDialog,
+                        append = notes_panel_button = &gtk::Button {
+                            set_icon_name: "folder-documents-symbolic",
+                            set_tooltip_text: Some("Notas"),
+                            add_css_class: "activity-bar-button",
+                            add_css_class: "flat",
+                            add_css_class: "active",
+                            connect_clicked[sender] => move |_btn| {
+                                sender.input(AppMsg::SwitchToPanel(SidebarPanel::Notes));
                             },
                         },
 
-                        append = &gtk::ScrolledWindow {
-                            set_vexpand: true,
-                            set_hexpand: false,
-                            set_width_request: 190,
-                            set_policy: (gtk::PolicyType::Never, gtk::PolicyType::Automatic),
-
-                            #[wrap(Some)]
-                            set_child = notes_list = &gtk::ListBox {
-                                add_css_class: "navigation-sidebar",
-                                set_hexpand: false,
-                                set_width_request: 180,
-                                set_selection_mode: gtk::SelectionMode::Single,
-                                set_activate_on_single_click: false,
-                                set_can_focus: true,
-                                set_focus_on_click: true,
+                        append = bases_panel_button = &gtk::Button {
+                            set_icon_name: "view-grid-symbolic",
+                            set_tooltip_text: Some("Bases"),
+                            add_css_class: "activity-bar-button",
+                            add_css_class: "flat",
+                            connect_clicked[sender] => move |_btn| {
+                                sender.input(AppMsg::SwitchToPanel(SidebarPanel::Bases));
                             },
                         },
                     },
 
-                    #[wrap(Some)]
-                    set_end_child = &gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
+                    append = split_view = &gtk::Paned {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_position: 0,
                         set_vexpand: true,
+                        set_hexpand: true,
+                        set_wide_handle: false,
+                        set_shrink_start_child: true,
+                        set_resize_start_child: false,
 
-                        append = &gtk::Overlay {
-                            set_hexpand: true,
+                        #[wrap(Some)]
+                        set_start_child = sidebar_container = &gtk::ScrolledWindow {
+                            add_css_class: "sidebar",
+                            set_width_request: 200,
+                            set_hexpand: false,
                             set_vexpand: true,
+                            set_policy: (gtk::PolicyType::Never, gtk::PolicyType::Never),
+                            set_propagate_natural_width: false,
+                            set_propagate_natural_height: false,
 
                             #[wrap(Some)]
-                            set_child = content_stack = &gtk::Stack {
-                                set_hexpand: true,
+                            set_child = sidebar_stack = &gtk::Stack {
+                                set_transition_type: gtk::StackTransitionType::None,
+                                set_transition_duration: 0,
                                 set_vexpand: true,
-                                set_transition_type: gtk::StackTransitionType::Crossfade,
-                                set_transition_duration: 200,
-                            },
+                                set_hexpand: false,
+                                set_hhomogeneous: true,
+                                set_vhomogeneous: true,
 
-                            add_overlay = floating_search_bar = &gtk::Box {
-                                set_orientation: gtk::Orientation::Vertical,
-                                set_halign: gtk::Align::Center,
-                                set_valign: gtk::Align::Start,
-                                set_margin_top: 16,
-                                set_width_request: 600,
-                                set_visible: false,
-                                add_css_class: "floating-search",
-                                add_css_class: "card",
+                                // Panel de Notas
+                                add_named[Some("notes")] = &gtk::Box {
+                                    set_orientation: gtk::Orientation::Vertical,
+                                    set_spacing: 0,
+                                    set_hexpand: false,
+                                    set_width_request: 200,
 
-                                append = &gtk::Box {
-                                    set_orientation: gtk::Orientation::Horizontal,
-                                    set_spacing: 8,
-                                    set_margin_all: 12,
+                                    append = &gtk::Box {
+                                        set_orientation: gtk::Orientation::Horizontal,
+                                        set_spacing: 8,
+                                        set_margin_start: 10,
+                                        set_margin_end: 10,
+                                        set_margin_top: 8,
+                                        set_margin_bottom: 8,
 
-                                    append = floating_search_entry = &gtk::SearchEntry {
-                                        set_placeholder_text: Some("Buscar... (Ctrl: cambiar modo)"),
+                                        append = sidebar_notes_label = &gtk::Label {
+                                            set_label: "Notas",
+                                            set_xalign: 0.0,
+                                            set_hexpand: true,
+                                            add_css_class: "heading",
+                                        },
+
+                                        append = search_toggle_button = &gtk::Button {
+                                            set_icon_name: "system-search-symbolic",
+                                            set_tooltip_text: Some("Buscar (Ctrl+F)"),
+                                            add_css_class: "flat",
+                                            add_css_class: "circular",
+                                            connect_clicked[sender] => move |_| {
+                                                sender.input(AppMsg::CloseSidebarAndOpenSearch);
+                                            },
+                                        },
+
+                                        append = new_note_button = &gtk::Button {
+                                            set_icon_name: "list-add-symbolic",
+                                            set_tooltip_text: Some("Nueva nota"),
+                                            add_css_class: "flat",
+                                            add_css_class: "circular",
+                                            connect_clicked => AppMsg::ShowCreateNoteDialog,
+                                        },
+                                    },
+
+                                    append = &gtk::ScrolledWindow {
+                                        set_vexpand: true,
                                         set_hexpand: true,
-                                    },
+                                        set_policy: (gtk::PolicyType::Never, gtk::PolicyType::Automatic),
 
-                                    append = floating_search_mode_label = &gtk::Label {
-                                        set_markup: "<small>🔍 Normal</small>",
-                                        set_tooltip_text: Some("Ctrl para cambiar modo"),
-                                        add_css_class: "dim-label",
-                                        set_margin_start: 4,
-                                        set_margin_end: 4,
-                                    },
-
-                                    append = &gtk::Button {
-                                        set_icon_name: "window-close-symbolic",
-                                        set_tooltip_text: Some("Cerrar (Esc)"),
-                                        add_css_class: "flat",
-                                        add_css_class: "circular",
-                                        connect_clicked => AppMsg::ToggleFloatingSearch,
+                                        #[wrap(Some)]
+                                        set_child = notes_list = &gtk::ListBox {
+                                            add_css_class: "navigation-sidebar",
+                                            set_hexpand: true,
+                                            set_selection_mode: gtk::SelectionMode::Single,
+                                            set_activate_on_single_click: false,
+                                            set_can_focus: true,
+                                            set_focus_on_click: true,
+                                        },
                                     },
                                 },
 
-                                append = floating_search_results = &gtk::ScrolledWindow {
-                                    set_vexpand: true,
-                                    set_max_content_height: 400,
-                                    set_propagate_natural_height: true,
-                                    set_policy: (gtk::PolicyType::Never, gtk::PolicyType::Automatic),
+                                // Panel de Bases
+                                add_named[Some("bases")] = &gtk::Box {
+                                    set_orientation: gtk::Orientation::Vertical,
+                                    set_spacing: 0,
+                                    set_hexpand: false,
+                                    set_width_request: 200,
 
-                                    #[wrap(Some)]
-                                    set_child = floating_search_results_list = &gtk::ListBox {
-                                        add_css_class: "boxed-list",
-                                        set_selection_mode: gtk::SelectionMode::Single,
+                                    append = &gtk::Box {
+                                        set_orientation: gtk::Orientation::Horizontal,
+                                        set_spacing: 8,
+                                        set_margin_start: 10,
+                                        set_margin_end: 10,
+                                        set_margin_top: 8,
+                                        set_margin_bottom: 8,
+
+                                        append = &gtk::Label {
+                                            set_label: "Bases",
+                                            set_xalign: 0.0,
+                                            set_hexpand: true,
+                                            add_css_class: "heading",
+                                        },
+
+                                        append = &gtk::Button {
+                                            set_icon_name: "list-add-symbolic",
+                                            set_tooltip_text: Some("Nueva Base"),
+                                            add_css_class: "flat",
+                                            add_css_class: "circular",
+                                            connect_clicked => AppMsg::CreateNewBase,
+                                        },
                                     },
-                                },
-                            },
 
-                            add_overlay = notification_revealer = &gtk::Revealer {
-                                set_halign: gtk::Align::Center,
-                                set_valign: gtk::Align::End,
-                                set_margin_bottom: 80,
-                                set_transition_type: gtk::RevealerTransitionType::SlideUp,
-                                set_transition_duration: 250,
-                                set_reveal_child: false,
+                                    append = &gtk::ScrolledWindow {
+                                        set_vexpand: true,
+                                        set_hexpand: true,
+                                        set_policy: (gtk::PolicyType::Never, gtk::PolicyType::Automatic),
 
-                                #[wrap(Some)]
-                                set_child = &gtk::Box {
-                                    set_orientation: gtk::Orientation::Horizontal,
-                                    set_spacing: 12,
-                                    set_margin_all: 16,
-                                    add_css_class: "app",
-                                    add_css_class: "card",
-                                    add_css_class: "notification-toast",
-
-                                    append = notification_label = &gtk::Label {
-                                        set_wrap: true,
-                                        set_wrap_mode: gtk::pango::WrapMode::Word,
-                                        set_max_width_chars: 50,
-                                        set_justify: gtk::Justification::Center,
+                                        #[wrap(Some)]
+                                        set_child = bases_list = &gtk::ListBox {
+                                            add_css_class: "navigation-sidebar",
+                                            set_hexpand: true,
+                                            set_selection_mode: gtk::SelectionMode::Single,
+                                            set_activate_on_single_click: true,
+                                            set_can_focus: true,
+                                            set_focus_on_click: true,
+                                        },
                                     },
                                 },
                             },
                         },
 
-                        append = status_bar = &gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 8,
-                            set_margin_all: 6,
-                            add_css_class: "status-bar",
+                        #[wrap(Some)]
+                        set_end_child = &gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_hexpand: true,
+                            set_vexpand: true,
 
-                            append = mode_label = &gtk::Label {
-                                set_markup: "<b>NORMAL</b>",
-                                set_xalign: 0.0,
-                                add_css_class: "mode-indicator",
-                            },
-
-                            append = &gtk::Separator {
-                                set_orientation: gtk::Orientation::Vertical,
-                                set_margin_start: 4,
-                                set_margin_end: 4,
-                            },
-
-                            append = tags_menu_button = &gtk::MenuButton {
-                                set_icon_name: "tag-symbolic",
-                                set_tooltip_text: Some("Tags de la nota"),
-                                add_css_class: "flat",
-                                add_css_class: "circular",
-                                set_valign: gtk::Align::Center,
-                                set_direction: gtk::ArrowType::Up,
+                            append = &gtk::Overlay {
+                                set_hexpand: true,
+                                set_vexpand: true,
 
                                 #[wrap(Some)]
-                                set_popover = &gtk::Popover {
-                                    add_css_class: "tags-popover",
-                                    set_autohide: true,
-                                    set_size_request: (220, -1),
+                                set_child = content_stack = &gtk::Stack {
+                                    set_hexpand: true,
+                                    set_vexpand: true,
+                                    set_transition_type: gtk::StackTransitionType::Crossfade,
+                                    set_transition_duration: 200,
+                                },
+
+                                add_overlay = floating_search_bar = &gtk::Box {
+                                    set_orientation: gtk::Orientation::Vertical,
+                                    set_halign: gtk::Align::Center,
+                                    set_valign: gtk::Align::Start,
+                                    set_margin_top: 16,
+                                    set_width_request: 600,
+                                    set_visible: false,
+                                    add_css_class: "floating-search",
+                                    add_css_class: "card",
+
+                                    append = &gtk::Box {
+                                        set_orientation: gtk::Orientation::Horizontal,
+                                        set_spacing: 8,
+                                        set_margin_all: 12,
+
+                                        append = floating_search_entry = &gtk::SearchEntry {
+                                            set_placeholder_text: Some("Buscar... (Ctrl: cambiar modo)"),
+                                            set_hexpand: true,
+                                        },
+
+                                        append = floating_search_mode_label = &gtk::Label {
+                                            set_markup: "<small>🔍 Normal</small>",
+                                            set_tooltip_text: Some("Ctrl para cambiar modo"),
+                                            add_css_class: "dim-label",
+                                            set_margin_start: 4,
+                                            set_margin_end: 4,
+                                        },
+
+                                        append = &gtk::Button {
+                                            set_icon_name: "window-close-symbolic",
+                                            set_tooltip_text: Some("Cerrar (Esc)"),
+                                            add_css_class: "flat",
+                                            add_css_class: "circular",
+                                            connect_clicked => AppMsg::ToggleFloatingSearch,
+                                        },
+                                    },
+
+                                    append = floating_search_results = &gtk::ScrolledWindow {
+                                        set_vexpand: true,
+                                        set_max_content_height: 400,
+                                        set_propagate_natural_height: true,
+                                        set_policy: (gtk::PolicyType::Never, gtk::PolicyType::Automatic),
+
+                                        #[wrap(Some)]
+                                        set_child = floating_search_results_list = &gtk::ListBox {
+                                            add_css_class: "boxed-list",
+                                            set_selection_mode: gtk::SelectionMode::Single,
+                                        },
+                                    },
+                                },
+
+                                add_overlay = notification_revealer = &gtk::Revealer {
+                                    set_halign: gtk::Align::Center,
+                                    set_valign: gtk::Align::End,
+                                    set_margin_bottom: 80,
+                                    set_transition_type: gtk::RevealerTransitionType::SlideUp,
+                                    set_transition_duration: 250,
+                                    set_reveal_child: false,
 
                                     #[wrap(Some)]
                                     set_child = &gtk::Box {
-                                        set_orientation: gtk::Orientation::Vertical,
-                                        set_spacing: 8,
-                                        set_margin_all: 12,
-                                        set_width_request: 200,
+                                        set_orientation: gtk::Orientation::Horizontal,
+                                        set_spacing: 12,
+                                        set_margin_all: 16,
+                                        add_css_class: "app",
+                                        add_css_class: "card",
+                                        add_css_class: "notification-toast",
 
-                                        append = &gtk::Label {
-                                            set_markup: "<b>Tags</b>",
-                                            set_xalign: 0.0,
-                                            set_margin_bottom: 4,
-                                        },
-
-                                        append = tags_list_box = &gtk::ListBox {
-                                            add_css_class: "tags-list",
-                                            set_selection_mode: gtk::SelectionMode::None,
+                                        append = notification_label = &gtk::Label {
+                                            set_wrap: true,
+                                            set_wrap_mode: gtk::pango::WrapMode::Word,
+                                            set_max_width_chars: 50,
+                                            set_justify: gtk::Justification::Center,
                                         },
                                     },
                                 },
                             },
 
-                            append = todos_menu_button = &gtk::MenuButton {
-                                set_icon_name: "checkbox-checked-symbolic",
-                                set_tooltip_text: Some("TODOs de la nota"),
-                                add_css_class: "flat",
-                                add_css_class: "circular",
-                                set_valign: gtk::Align::Center,
-                                set_direction: gtk::ArrowType::Up,
+                            append = status_bar = &gtk::Box {
+                                set_orientation: gtk::Orientation::Horizontal,
+                                set_spacing: 8,
+                                set_margin_all: 6,
+                                add_css_class: "status-bar",
 
-                                #[wrap(Some)]
-                                set_popover = &gtk::Popover {
-                                    add_css_class: "tags-popover",
-                                    set_autohide: true,
-                                    set_has_arrow: false,
-                                    set_size_request: (320, 360),
-                                    set_default_widget: gtk::Widget::NONE,
+                                append = mode_label = &gtk::Label {
+                                    set_markup: "<b>NORMAL</b>",
+                                    set_xalign: 0.0,
+                                    add_css_class: "mode-indicator",
+                                },
+
+                                append = &gtk::Separator {
+                                    set_orientation: gtk::Orientation::Vertical,
+                                    set_margin_start: 4,
+                                    set_margin_end: 4,
+                                },
+
+                                append = tags_menu_button = &gtk::MenuButton {
+                                    set_icon_name: "tag-symbolic",
+                                    set_tooltip_text: Some("Tags de la nota"),
+                                    add_css_class: "flat",
+                                    add_css_class: "circular",
+                                    set_valign: gtk::Align::Center,
+                                    set_direction: gtk::ArrowType::Up,
 
                                     #[wrap(Some)]
-                                    set_child = &gtk::ScrolledWindow {
-                                        set_width_request: 320,
-                                        set_height_request: 360,
-                                        set_max_content_width: 320,
-                                        set_max_content_height: 360,
-                                        set_min_content_width: 320,
-                                        set_min_content_height: 360,
-                                        set_propagate_natural_height: false,
-                                        set_propagate_natural_width: false,
-                                        set_policy: (gtk::PolicyType::Never, gtk::PolicyType::Automatic),
-                                        set_hscrollbar_policy: gtk::PolicyType::Never,
-                                        set_vscrollbar_policy: gtk::PolicyType::Automatic,
-                                        set_kinetic_scrolling: true,
-                                        set_overlay_scrolling: false,
-                                        set_hexpand: false,
-                                        set_vexpand: false,
+                                    set_popover = &gtk::Popover {
+                                        add_css_class: "tags-popover",
+                                        set_autohide: true,
+                                        set_size_request: (220, -1),
 
                                         #[wrap(Some)]
                                         set_child = &gtk::Box {
                                             set_orientation: gtk::Orientation::Vertical,
                                             set_spacing: 8,
                                             set_margin_all: 12,
-                                            set_width_request: 296,
-                                            set_hexpand: false,
-                                            set_vexpand: false,
+                                            set_width_request: 200,
 
                                             append = &gtk::Label {
-                                                set_markup: "<b>TODOs</b>",
+                                                set_markup: "<b>Tags</b>",
                                                 set_xalign: 0.0,
                                                 set_margin_bottom: 4,
                                             },
 
-                                            append = todos_list_box = &gtk::ListBox {
+                                            append = tags_list_box = &gtk::ListBox {
                                                 add_css_class: "tags-list",
                                                 set_selection_mode: gtk::SelectionMode::None,
                                             },
                                         },
                                     },
                                 },
-                            },
 
-                            append = &gtk::Label {
-                                set_hexpand: true,
-                                set_label: "",
-                            },
-
-                            append = stats_label = &gtk::Label {
-                                set_label: "0 líneas | 0 palabras",
-                                set_xalign: 1.0,
-                            },
-
-                            append = &gtk::Box {
-                                set_spacing: 4,
-
-                                append = &gtk::Separator {
-                                    set_orientation: gtk::Orientation::Vertical,
-                                    set_margin_start: 8,
-                                    set_margin_end: 8,
-                                },
-
-                                // Reproductor de música
-                                append = music_player_button = &gtk::MenuButton {
-                                    set_icon_name: "audio-x-generic-symbolic",
-                                    set_tooltip_text: Some("Reproductor de música"),
+                                append = todos_menu_button = &gtk::MenuButton {
+                                    set_icon_name: "checkbox-checked-symbolic",
+                                    set_tooltip_text: Some("TODOs de la nota"),
                                     add_css_class: "flat",
                                     add_css_class: "circular",
                                     set_valign: gtk::Align::Center,
                                     set_direction: gtk::ArrowType::Up,
+
+                                    #[wrap(Some)]
+                                    set_popover = &gtk::Popover {
+                                        add_css_class: "tags-popover",
+                                        set_autohide: true,
+                                        set_has_arrow: false,
+                                        set_size_request: (320, 360),
+                                        set_default_widget: gtk::Widget::NONE,
+
+                                        #[wrap(Some)]
+                                        set_child = &gtk::ScrolledWindow {
+                                            set_width_request: 320,
+                                            set_height_request: 360,
+                                            set_max_content_width: 320,
+                                            set_max_content_height: 360,
+                                            set_min_content_width: 320,
+                                            set_min_content_height: 360,
+                                            set_propagate_natural_height: false,
+                                            set_propagate_natural_width: false,
+                                            set_policy: (gtk::PolicyType::Never, gtk::PolicyType::Automatic),
+                                            set_hscrollbar_policy: gtk::PolicyType::Never,
+                                            set_vscrollbar_policy: gtk::PolicyType::Automatic,
+                                            set_kinetic_scrolling: true,
+                                            set_overlay_scrolling: false,
+                                            set_hexpand: false,
+                                            set_vexpand: false,
+
+                                            #[wrap(Some)]
+                                            set_child = &gtk::Box {
+                                                set_orientation: gtk::Orientation::Vertical,
+                                                set_spacing: 8,
+                                                set_margin_all: 12,
+                                                set_width_request: 296,
+                                                set_hexpand: false,
+                                                set_vexpand: false,
+
+                                                append = &gtk::Label {
+                                                    set_markup: "<b>TODOs</b>",
+                                                    set_xalign: 0.0,
+                                                    set_margin_bottom: 4,
+                                                },
+
+                                                append = todos_list_box = &gtk::ListBox {
+                                                    add_css_class: "tags-list",
+                                                    set_selection_mode: gtk::SelectionMode::None,
+                                                },
+                                            },
+                                        },
+                                    },
                                 },
 
-                                // Recordatorios
-                                append = reminders_button = &gtk::MenuButton {
-                                    set_icon_name: "alarm-symbolic",
-                                    set_tooltip_text: Some("Recordatorios (Alt+R)"),
-                                    add_css_class: "flat",
-                                    add_css_class: "circular",
-                                    set_valign: gtk::Align::Center,
-                                    set_direction: gtk::ArrowType::Up,
+                                append = &gtk::Label {
+                                    set_hexpand: true,
+                                    set_label: "",
                                 },
 
-                                // TODO: Botón 8BIT desactivado temporalmente
-                                // append = bit8_button = &gtk::ToggleButton {
-                                //     set_label: "8BIT",
-                                //     set_tooltip_text: Some("Modo retro 8-bit"),
-                                //     add_css_class: "flat",
-                                //     connect_toggled[sender] , move |btn| {
-                                //         if btn.is_active() {
-                                //             sender.input(AppMsg::Toggle8BitMode);
-                                //         } else {
-                                //             sender.input(AppMsg::Toggle8BitMode);
-                                //         }
-                                //     },
-                                // },
+                                append = stats_label = &gtk::Label {
+                                    set_label: "0 líneas | 0 palabras",
+                                    set_xalign: 1.0,
+                                },
 
-                                append = settings_button = &gtk::MenuButton {
-                                    set_icon_name: "emblem-system-symbolic",
-                                    set_tooltip_text: Some("Ajustes"),
-                                    add_css_class: "flat",
-                                    set_direction: gtk::ArrowType::Up,
-                                    // El popover se creará dinámicamente después
+                                append = &gtk::Box {
+                                    set_spacing: 4,
+
+                                    append = &gtk::Separator {
+                                        set_orientation: gtk::Orientation::Vertical,
+                                        set_margin_start: 8,
+                                        set_margin_end: 8,
+                                    },
+
+                                    // Reproductor de música
+                                    append = music_player_button = &gtk::MenuButton {
+                                        set_icon_name: "audio-x-generic-symbolic",
+                                        set_tooltip_text: Some("Reproductor de música"),
+                                        add_css_class: "flat",
+                                        add_css_class: "circular",
+                                        set_valign: gtk::Align::Center,
+                                        set_direction: gtk::ArrowType::Up,
+                                    },
+
+                                    // Recordatorios
+                                    append = reminders_button = &gtk::MenuButton {
+                                        set_icon_name: "alarm-symbolic",
+                                        set_tooltip_text: Some("Recordatorios (Alt+R)"),
+                                        add_css_class: "flat",
+                                        add_css_class: "circular",
+                                        set_valign: gtk::Align::Center,
+                                        set_direction: gtk::ArrowType::Up,
+                                    },
+
+                                    // TODO: Botón 8BIT desactivado temporalmente
+                                    // append = bit8_button = &gtk::ToggleButton {
+                                    //     set_label: "8BIT",
+                                    //     set_tooltip_text: Some("Modo retro 8-bit"),
+                                    //     add_css_class: "flat",
+                                    //     connect_toggled[sender] , move |btn| {
+                                    //         if btn.is_active() {
+                                    //             sender.input(AppMsg::Toggle8BitMode);
+                                    //         } else {
+                                    //             sender.input(AppMsg::Toggle8BitMode);
+                                    //         }
+                                    //     },
+                                    // },
+
+                                    append = settings_button = &gtk::MenuButton {
+                                        set_icon_name: "emblem-system-symbolic",
+                                        set_tooltip_text: Some("Ajustes"),
+                                        add_css_class: "flat",
+                                        set_direction: gtk::ArrowType::Up,
+                                        // El popover se creará dinámicamente después
+                                    },
                                 },
                             },
                         },
@@ -1114,6 +1250,130 @@ impl SimpleComponent for MainApp {
             }
         }
 
+        // Helper para crear nota de novedades cuando hay una actualización
+        fn create_whats_new_note(
+            notes_dir: &NotesDirectory,
+            notes_config: &Rc<RefCell<NotesConfig>>,
+            version: &str,
+        ) {
+            let whats_new_content = format!(r#"# 🆕 Novedades en NotNative v{}
+
+¡Gracias por actualizar! Aquí tienes las nuevas funcionalidades:
+
+---
+
+## 🗃️ Bases de Datos Inline
+
+Ahora puedes crear **bases de datos directamente en tus notas**:
+
+```
+:::database{{name="Mi Base de Datos" columns="nombre,estado,fecha"}}
+```
+
+### Características:
+- ✅ Añadir, editar y eliminar filas
+- 🔍 Filtrar datos con múltiples condiciones
+- ↕️ Ordenar por cualquier columna
+- 👁️ Mostrar/ocultar columnas
+- 🔎 Búsqueda rápida en tabla
+
+---
+
+## 🔗 Propiedades Inline Mejoradas
+
+Las propiedades al estilo Notion ahora son más potentes:
+
+```yaml
+---
+status:: completado
+priority:: alta
+tags:: #proyecto, #importante
+due:: 2024-12-31
+---
+```
+
+---
+
+## 🌐 Traducciones Dinámicas
+
+- Cambio de idioma **en tiempo real** (sin reiniciar)
+- Interfaz completamente en Español e Inglés
+
+---
+
+## 🤖 Mejoras en Chat IA
+
+- Nuevo sistema MCP para herramientas
+- Mejor integración con el contexto de notas
+
+---
+
+## 📋 Otras mejoras
+
+- Mejor rendimiento general
+- Correcciones de errores
+- UI más pulida
+
+---
+
+¡Disfruta de las nuevas funcionalidades! 🚀
+
+*Para ver los atajos de teclado, consulta @NotNative_Atajos_de_Teclado*
+"#, version);
+
+            // Crear en carpeta Notnative
+            let note_name = format!("Notnative/Novedades_v{}", version.replace('.', "_"));
+
+            match notes_dir.create_note(&note_name, &whats_new_content) {
+                Ok(_) => {
+                    println!("✅ Nota de novedades v{} creada", version);
+                }
+                Err(e) => {
+                    // Si ya existe, no es error
+                    if e.to_string().contains("existe") || e.to_string().contains("exists") {
+                        println!("ℹ️ Nota de novedades v{} ya existía", version);
+                    } else {
+                        eprintln!("⚠️ Error creando nota de novedades: {}", e);
+                    }
+                }
+            }
+
+            // Actualizar versión vista y guardar config
+            {
+                let mut config = notes_config.borrow_mut();
+                config.set_last_seen_version(version);
+                if let Err(e) = config.save(NotesConfig::default_path()) {
+                    eprintln!("⚠️ Error guardando config: {}", e);
+                } else {
+                    println!("✅ Versión {} marcada como vista", version);
+                }
+            }
+        }
+
+        // Verificar si hay nueva versión y crear nota de novedades
+        fn check_and_create_whats_new(
+            notes_dir: &NotesDirectory,
+            notes_config: &Rc<RefCell<NotesConfig>>,
+        ) {
+            const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+            
+            let is_new = notes_config.borrow().is_new_version(CURRENT_VERSION);
+            let onboarding_completed = notes_config.borrow().is_onboarding_completed();
+            
+            // Solo crear nota de novedades si:
+            // 1. Es una nueva versión
+            // 2. El onboarding ya se completó (no es primera vez)
+            if is_new && onboarding_completed {
+                println!("🆕 Nueva versión detectada: {}", CURRENT_VERSION);
+                create_whats_new_note(notes_dir, notes_config, CURRENT_VERSION);
+            } else if is_new && !onboarding_completed {
+                // Primera instalación, solo marcar versión como vista
+                let mut config = notes_config.borrow_mut();
+                config.set_last_seen_version(CURRENT_VERSION);
+                let _ = config.save(NotesConfig::default_path());
+            }
+        }
+
         // Intentar cargar la última nota abierta, si no la de bienvenida, o crearla si no existe
         let (initial_buffer, current_note) = {
             // Nombre único para la nota de atajos de NotNative
@@ -1192,26 +1452,70 @@ impl SimpleComponent for MainApp {
                     match notes_dir.list_notes() {
                         Ok(notes) if notes.is_empty() => {
                             // Primera vez usando la app
-                            let welcome_content = r#"# Bienvenido a NotNative
+                            let welcome_content = r#"# 🚀 Bienvenido a NotNative
 
-Esta es tu primera nota. NotNative guarda cada nota como un archivo .md independiente.
+Esta es tu primera nota. NotNative guarda cada nota como un archivo `.md` independiente.
 
-## Comandos básicos
+## ⌨️ Comandos básicos
 
-- `i` → Modo INSERT (editar)
-- `Esc` → Modo NORMAL
-- `h/j/k/l` → Navegar (izquierda/abajo/arriba/derecha)
-- `x` → Eliminar carácter
-- `u` → Deshacer
-- `Ctrl+S` → Guardar
+| Comando | Acción |
+|---------|--------|
+| `i` | Modo INSERT (editar) |
+| `Esc` | Modo NORMAL |
+| `h/j/k/l` | Navegar (izquierda/abajo/arriba/derecha) |
+| `x` | Eliminar carácter |
+| `u` | Deshacer |
+| `Ctrl+S` | Guardar |
 
-Las notas se guardan automáticamente en: `~/.local/share/notnative/notes/`
+Las notas se guardan en: `~/.local/share/notnative/notes/`
+
+---
+
+## 🗃️ Bases de Datos Inline
+
+Puedes crear **bases de datos directamente en tus notas** con una sintaxis simple:
+
+```
+:::database{name="Tareas" columns="titulo,estado,prioridad"}
+```
+
+Esto renderiza una tabla interactiva donde puedes:
+- ✅ Añadir, editar y eliminar filas
+- 🔍 Filtrar y ordenar datos
+- 📊 Gestionar columnas visibles
+
+---
+
+## 🔗 Propiedades Inline
+
+Añade metadatos a tus notas con propiedades al estilo Notion:
+
+```
+---
+status:: en progreso
+priority:: alta  
+tags:: #proyecto, #trabajo
+due:: 2024-12-01
+---
+```
+
+Estas propiedades se pueden usar para filtrar y organizar tus notas.
+
+---
 
 ## 📝 Quick Notes
 
-Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicación** (incluso juegos fullscreen).
+Abre una ventana flotante de notas rápidas desde **cualquier aplicación** (incluso juegos fullscreen).
 
-👉 **Lee la nota @NotNative_Atajos_de_Teclado para configurar los atajos de teclado globales.**
+👉 **Lee la nota @NotNative_Atajos_de_Teclado para configurar los atajos globales.**
+
+---
+
+## 🤖 Chat con IA
+
+NotNative incluye integración con modelos de IA para ayudarte con tus notas.
+
+¡Disfruta tomando notas! 📓
 "#;
                             // Crear nota de bienvenida
                             let result = match notes_dir.create_note("bienvenida", welcome_content)
@@ -1248,6 +1552,9 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
                 }
             }
         }
+
+        // Verificar actualizaciones y crear nota de novedades si es necesario
+        check_and_create_whats_new(&notes_dir, &notes_config);
 
         // Crear popover de autocompletado de tags ANTES del modelo
         let completion_list_box = gtk::ListBox::new();
@@ -1305,6 +1612,38 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
         mention_list_box.show();
 
         mention_popover.set_child(Some(&mention_scrolled));
+
+        // Crear popover de autocompletado de propiedades inline [campo::
+        let property_list_box = gtk::ListBox::new();
+        property_list_box.set_selection_mode(gtk::SelectionMode::None);
+        property_list_box.add_css_class("property-suggestions");
+        property_list_box.set_vexpand(true);
+        property_list_box.set_hexpand(true);
+
+        let property_scrolled = gtk::ScrolledWindow::new();
+        property_scrolled.set_has_frame(false);
+        property_scrolled.set_child(Some(&property_list_box));
+        property_scrolled.set_min_content_height(150);
+        property_scrolled.set_min_content_width(250);
+        property_scrolled.set_max_content_height(300);
+        property_scrolled.set_propagate_natural_height(false);
+        property_scrolled.set_propagate_natural_width(false);
+        property_scrolled.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+        property_scrolled.set_vexpand(true);
+        property_scrolled.set_hexpand(true);
+
+        let property_popover = gtk::Popover::new();
+        property_popover.set_parent(&text_view_actual);
+        property_popover.add_css_class("property-completion");
+        property_popover.set_autohide(false);
+        property_popover.set_size_request(250, 150);
+        property_popover.set_has_arrow(true);
+
+        // CRÍTICO: Mostrar explícitamente el contenido antes de agregarlo
+        property_scrolled.show();
+        property_list_box.show();
+
+        property_popover.set_child(Some(&property_scrolled));
 
         // Reproductor de música (se inicializará bajo demanda)
         let music_player: Rc<RefCell<Option<Rc<crate::music_player::MusicPlayer>>>> =
@@ -1867,6 +2206,86 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
         ));
 
         println!("✅ Sistema de recordatorios inicializado");
+
+        // ==================== BASE VIEW (Vista de Base tipo tabla) ====================
+
+        // Contenedor principal de la vista de Base
+        let base_view_container = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        base_view_container.set_vexpand(true);
+        base_view_container.set_hexpand(true);
+        base_view_container.add_css_class("base-view-container");
+
+        // Header de la vista de Base
+        let base_view_header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        base_view_header.set_margin_all(16);
+        base_view_header.add_css_class("base-view-header");
+
+        let base_view_icon = gtk::Image::from_icon_name("view-grid-symbolic");
+        base_view_icon.set_pixel_size(24);
+        base_view_header.append(&base_view_icon);
+
+        let base_view_title = gtk::Label::new(Some("Base"));
+        base_view_title.add_css_class("title-2");
+        base_view_title.set_hexpand(true);
+        base_view_title.set_xalign(0.0);
+        base_view_header.append(&base_view_title);
+
+        // Botón para volver al editor
+        let base_view_back_button = gtk::Button::new();
+        base_view_back_button.set_icon_name("go-previous-symbolic");
+        base_view_back_button.set_tooltip_text(Some("Volver al editor"));
+        base_view_back_button.add_css_class("flat");
+        base_view_back_button.connect_clicked(gtk::glib::clone!(
+            #[strong]
+            sender,
+            move |_| {
+                sender.input(AppMsg::CloseBaseView);
+            }
+        ));
+        base_view_header.append(&base_view_back_button);
+
+        // Botón para añadir propiedad
+        let base_view_add_prop_button = gtk::Button::new();
+        base_view_add_prop_button.set_icon_name("list-add-symbolic");
+        base_view_add_prop_button.set_tooltip_text(Some("Añadir propiedad"));
+        base_view_add_prop_button.add_css_class("flat");
+        base_view_header.append(&base_view_add_prop_button);
+
+        base_view_container.append(&base_view_header);
+
+        // Separador
+        let base_view_separator = gtk::Separator::new(gtk::Orientation::Horizontal);
+        base_view_container.append(&base_view_separator);
+
+        // ScrolledWindow para la tabla (legacy, se mantiene para compatibilidad)
+        let base_view_scroll = gtk::ScrolledWindow::new();
+        base_view_scroll.set_vexpand(true);
+        base_view_scroll.set_hexpand(true);
+        base_view_scroll.set_policy(gtk::PolicyType::Automatic, gtk::PolicyType::Automatic);
+
+        // Grid para mostrar las notas como tabla (legacy)
+        let base_view_grid = gtk::Grid::new();
+        base_view_grid.set_row_spacing(1);
+        base_view_grid.set_column_spacing(1);
+        base_view_grid.set_margin_all(16);
+        base_view_grid.add_css_class("base-view-grid");
+
+        base_view_scroll.set_child(Some(&base_view_grid));
+        
+        // Crear BaseTableWidget con persistencia (compartiendo i18n global)
+        let base_table_widget = BaseTableWidget::new(i18n.clone());
+        
+        // Añadir ambos: el scroll legacy (oculto) y el nuevo widget
+        base_view_container.append(&base_view_scroll);
+        base_view_container.append(base_table_widget.widget());
+        
+        // Ocultar el grid legacy, mostrar el nuevo widget
+        base_view_scroll.set_visible(false);
+        base_table_widget.widget().set_visible(true);
+        base_table_widget.widget().set_vexpand(true);
+
+        // Agregar al content_stack
+        widgets.content_stack.add_named(&base_view_container, Some("base"));
 
         // ==================== CHAT AI ====================
 
@@ -2546,6 +2965,17 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
             split_view: widgets.split_view.clone(),
             notes_list: widgets.notes_list.clone(),
             sidebar_visible: false,
+            active_panel: SidebarPanel::Notes,
+            activity_bar: widgets.activity_bar.clone(),
+            sidebar_stack: widgets.sidebar_stack.clone(),
+            notes_panel_button: widgets.notes_panel_button.clone(),
+            bases_panel_button: widgets.bases_panel_button.clone(),
+            bases_list: widgets.bases_list.clone(),
+            base_view_container: base_view_container.clone(),
+            base_view_title: base_view_title.clone(),
+            base_view_grid: base_view_grid.clone(),
+            base_table_widget: Rc::new(RefCell::new(base_table_widget)),
+            current_base_id: Rc::new(RefCell::new(None)),
             expanded_folders: std::collections::HashSet::new(),
             is_populating_list: Rc::new(RefCell::new(false)),
             is_syncing_to_gtk: Rc::new(RefCell::new(false)),
@@ -2571,6 +3001,11 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
             note_mention_list: mention_list_box.clone(),
             current_mention_prefix: Rc::new(RefCell::new(None)),
             just_completed_mention: Rc::new(RefCell::new(false)),
+            property_completion_popup: property_popover.clone(),
+            property_completion_list: property_list_box.clone(),
+            current_property_key: Rc::new(RefCell::new(None)),
+            current_property_prefix: Rc::new(RefCell::new(None)),
+            just_completed_property: Rc::new(RefCell::new(false)),
             search_toggle_button: widgets.search_toggle_button.clone(),
             floating_search_bar: widgets.floating_search_bar.clone(),
             floating_search_entry: widgets.floating_search_entry.clone(),
@@ -2640,7 +3075,6 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
             },
             semantic_search_answer_visible: Rc::new(RefCell::new(false)),
             i18n,
-            sidebar_toggle_button: widgets.sidebar_toggle_button.clone(),
             sidebar_notes_label: widgets.sidebar_notes_label.clone(),
             new_note_button: widgets.new_note_button.clone(),
             settings_button: widgets.settings_button.clone(),
@@ -3934,6 +4368,23 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
         ));
         widgets.notes_list.add_controller(folder_click);
 
+        // Conectar click en bases_list para cargar bases
+        widgets.bases_list.connect_row_activated(gtk::glib::clone!(
+            #[strong]
+            sender,
+            move |_list_box, row| {
+                // Obtener el ID de la base (guardado como i64)
+                let base_id = unsafe {
+                    row.data::<i64>("base_id")
+                        .map(|data| *data.as_ref())
+                };
+                
+                if let Some(id) = base_id {
+                    sender.input(AppMsg::LoadBase(id.to_string()));
+                }
+            }
+        ));
+
         // Agregar DropTarget al notes_list para manejar drops en la raíz
         let root_drop_target = gtk::DropTarget::new(glib::Type::STRING, gtk::gdk::DragAction::MOVE);
         root_drop_target.connect_drop(gtk::glib::clone!(
@@ -3982,8 +4433,8 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
 
                 match key_name.as_str() {
                     "Escape" => {
-                        // Cerrar sidebar y devolver foco al editor (ToggleSidebar maneja el foco)
-                        sender.input(AppMsg::ToggleSidebar);
+                        // Cerrar sidebar y devolver foco al editor
+                        sender.input(AppMsg::CloseSidebar);
                         gtk::glib::Propagation::Stop
                     }
                     "Return" => {
@@ -4278,7 +4729,7 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
                     }
                     "l" | "Right" | "Escape" => {
                         // Cerrar sidebar y volver al editor
-                        sender.input(AppMsg::ToggleSidebar);
+                        sender.input(AppMsg::CloseSidebar);
                         return gtk::glib::Propagation::Stop;
                     }
                     _ => {}
@@ -4652,9 +5103,6 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
         {
             let i18n = model.i18n.borrow();
             model
-                .sidebar_toggle_button
-                .set_tooltip_text(Some(&i18n.t("show_hide_notes")));
-            model
                 .search_toggle_button
                 .set_tooltip_text(Some(&i18n.t("search_notes")));
             model
@@ -4680,6 +5128,18 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
                 .floating_search_entry
                 .set_placeholder_text(Some(&i18n.t("search_placeholder")));
         }
+
+        // Abrir el sidebar después de un pequeño delay para que el layout esté calculado
+        let split_view_clone = model.split_view.clone();
+        let sidebar_stack_clone = model.sidebar_stack.clone();
+        let sender_clone = sender.clone();
+        gtk::glib::timeout_add_local_once(std::time::Duration::from_millis(100), move || {
+            // Primero establecer el panel visible
+            sidebar_stack_clone.set_visible_child_name("notes");
+            // Luego abrir el sidebar
+            split_view_clone.set_position(200);
+            sender_clone.input(AppMsg::ToggleSidebar);
+        });
 
         ComponentParts { model, widgets }
     }
@@ -4765,6 +5225,23 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
                 if mode != EditorMode::ChatAI && self.sidebar_visible {
                     self.sidebar_visible = false;
                     self.animate_sidebar(0);
+                    
+                    // Devolver foco al widget correcto según el modo
+                    let current_mode = mode;
+                    let markdown_enabled = self.markdown_enabled;
+                    let text_view = self.text_view.clone();
+                    let preview_webview = self.preview_webview.clone();
+
+                    gtk::glib::timeout_add_local_once(
+                        std::time::Duration::from_millis(160),
+                        move || {
+                            if current_mode == EditorMode::Normal && markdown_enabled {
+                                preview_webview.grab_focus();
+                            } else {
+                                text_view.grab_focus();
+                            }
+                        },
+                    );
                 }
             }
 
@@ -4929,6 +5406,289 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
                     },
                 );
             }
+
+            // Handlers del sidebar VS Code style
+            AppMsg::SwitchToPanel(panel) => {
+                self.active_panel = panel;
+                
+                // Actualizar estados visuales de los botones con CSS classes
+                match panel {
+                    SidebarPanel::Notes => {
+                        self.notes_panel_button.add_css_class("active");
+                        self.bases_panel_button.remove_css_class("active");
+                        self.sidebar_stack.set_visible_child_name("notes");
+                    }
+                    SidebarPanel::Bases => {
+                        self.notes_panel_button.remove_css_class("active");
+                        self.bases_panel_button.add_css_class("active");
+                        self.sidebar_stack.set_visible_child_name("bases");
+                        // Refrescar lista de bases al cambiar al panel
+                        sender.input(AppMsg::RefreshBasesPanel);
+                    }
+                }
+                
+                // Asegurar que el sidebar esté visible
+                if !self.sidebar_visible {
+                    self.sidebar_visible = true;
+                    // Ancho del sidebar VS Code style (activity_bar 48px + panel 200px)
+                    self.animate_sidebar(250);
+                }
+            }
+            
+            AppMsg::RefreshBasesPanel => {
+                // Limpiar lista actual
+                while let Some(child) = self.bases_list.first_child() {
+                    self.bases_list.remove(&child);
+                }
+                
+                // Cargar bases desde la base de datos
+                // list_bases() retorna Vec<(i64, String, Option<String>, Option<String>)>
+                // (id, name, description, source_folder)
+                match self.notes_db.list_bases() {
+                    Ok(bases) => {
+                        for (id, name, description, _source_folder) in bases {
+                            let row = gtk::ListBoxRow::new();
+                            let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+                            hbox.set_margin_all(8);
+                            
+                            // Icono
+                            let icon = gtk::Image::from_icon_name("view-grid-symbolic");
+                            icon.add_css_class("dim-label");
+                            hbox.append(&icon);
+                            
+                            // Nombre de la base
+                            let label = gtk::Label::new(Some(&name));
+                            label.set_xalign(0.0);
+                            label.set_hexpand(true);
+                            label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+                            hbox.append(&label);
+                            
+                            // Descripción si está disponible
+                            if let Some(desc) = &description {
+                                let desc_label = gtk::Label::new(Some(desc));
+                                desc_label.add_css_class("dim-label");
+                                desc_label.add_css_class("caption");
+                                hbox.append(&desc_label);
+                            }
+                            
+                            row.set_child(Some(&hbox));
+                            
+                            // Guardar ID de la base en la fila (i64)
+                            unsafe {
+                                row.set_data("base_id", id);
+                            }
+                            
+                            self.bases_list.append(&row);
+                        }
+                        
+                        // Si no hay bases, mostrar mensaje
+                        if self.bases_list.first_child().is_none() {
+                            let row = gtk::ListBoxRow::new();
+                            row.set_selectable(false);
+                            let label = gtk::Label::new(Some("No hay bases creadas"));
+                            label.add_css_class("dim-label");
+                            label.set_margin_all(16);
+                            row.set_child(Some(&label));
+                            self.bases_list.append(&row);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error al cargar bases: {}", e);
+                    }
+                }
+            }
+            
+            AppMsg::CreateNewBase => {
+                // Crear diálogo simple para nueva base
+                let dialog = gtk::Dialog::builder()
+                    .title("Nueva Base")
+                    .modal(true)
+                    .transient_for(&self.main_window)
+                    .default_width(400)
+                    .build();
+                
+                dialog.add_button("Cancelar", gtk::ResponseType::Cancel);
+                dialog.add_button("Crear", gtk::ResponseType::Accept);
+                
+                let content = dialog.content_area();
+                content.set_spacing(12);
+                content.set_margin_all(16);
+                
+                // Icono y título
+                let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+                let icon = gtk::Label::new(Some("📊"));
+                icon.add_css_class("title-1");
+                header.append(&icon);
+                
+                let title = gtk::Label::new(Some("Crear nueva Base de datos"));
+                title.add_css_class("title-2");
+                header.append(&title);
+                content.append(&header);
+                
+                let hint = gtk::Label::new(Some("Una Base muestra tus notas como tabla, con las propiedades [campo::valor] como columnas. Podrás configurar filtros y columnas después."));
+                hint.set_wrap(true);
+                hint.set_xalign(0.0);
+                hint.add_css_class("dim-label");
+                hint.set_margin_top(8);
+                hint.set_margin_bottom(8);
+                content.append(&hint);
+                
+                // Campo de nombre
+                let name_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
+                let name_label = gtk::Label::new(Some("Nombre"));
+                name_label.set_xalign(0.0);
+                name_box.append(&name_label);
+                
+                let name_entry = gtk::Entry::new();
+                name_entry.set_placeholder_text(Some("Mi Base de Datos"));
+                name_box.append(&name_entry);
+                content.append(&name_box);
+                
+                // Campo de descripción (opcional)
+                let desc_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
+                let desc_label = gtk::Label::new(Some("Descripción (opcional)"));
+                desc_label.set_xalign(0.0);
+                desc_box.append(&desc_label);
+                
+                let desc_entry = gtk::Entry::new();
+                desc_entry.set_placeholder_text(Some("Descripción de la base"));
+                desc_box.append(&desc_entry);
+                content.append(&desc_box);
+                
+                let sender_clone = sender.clone();
+                let notes_db = self.notes_db.clone_connection();
+                
+                dialog.connect_response(move |dialog, response| {
+                    if response == gtk::ResponseType::Accept {
+                        let name = name_entry.text().to_string();
+                        let description = {
+                            let text = desc_entry.text().to_string();
+                            if text.is_empty() { None } else { Some(text) }
+                        };
+                        
+                        if !name.is_empty() {
+                            use crate::core::Base;
+                            let base = Base::new(&name);
+                            // Sin carpeta fuente = todas las notas
+                            // Las columnas se descubren automáticamente
+                            let config_yaml = serde_yaml::to_string(&base).unwrap_or_default();
+                            
+                            match notes_db.create_base(
+                                &name, 
+                                description.as_deref(), 
+                                None, // Sin filtro de carpeta inicial
+                                &config_yaml
+                            ) {
+                                Ok(_id) => {
+                                    sender_clone.input(AppMsg::RefreshBasesPanel);
+                                }
+                                Err(e) => {
+                                    eprintln!("Error al crear base: {}", e);
+                                }
+                            }
+                        }
+                    }
+                    dialog.close();
+                });
+                
+                dialog.present();
+            }
+            
+            AppMsg::LoadBase(base_id) => {
+                println!("DEBUG: LoadBase recibido con id={}", base_id);
+                // Parsear base_id como i64
+                if let Ok(id) = base_id.parse::<i64>() {
+                    // Obtener información de la base
+                    match self.notes_db.get_base(id) {
+                        Ok(Some((_, name, _description, _source_folder, config_yaml, _active_view))) => {
+                            // Guardar el ID de la base actual
+                            *self.current_base_id.borrow_mut() = Some(id);
+                            
+                            // Actualizar título
+                            self.base_view_title.set_text(&name);
+                            
+                            // Parsear la configuración de la Base
+                            match Base::parse(&config_yaml) {
+                                Ok(base) => {
+                                    // Obtener el directorio de notas
+                                    let notes_root = self.notes_dir.root();
+                                    
+                                    // Cargar en el BaseTableWidget con persistencia
+                                    let mut widget = self.base_table_widget.borrow_mut();
+                                    widget.load_base(id, base, self.notes_db.clone_connection(), notes_root);
+                                    
+                                    // Configurar callback para abrir notas desde la tabla
+                                    let sender_clone = sender.clone();
+                                    widget.on_note_double_click(move |note_path| {
+                                        // Extraer el nombre de la nota del path
+                                        let note_name = std::path::Path::new(note_path)
+                                            .file_stem()
+                                            .and_then(|s| s.to_str())
+                                            .unwrap_or(note_path)
+                                            .to_string();
+                                        sender_clone.input(AppMsg::LoadNoteFromSidebar { name: note_name });
+                                        sender_clone.input(AppMsg::CloseBaseView);
+                                    });
+                                    
+                                    // Configurar callback para abrir notas desde el grafo
+                                    let sender_clone = sender.clone();
+                                    widget.on_graph_note_click(move |note_name| {
+                                        sender_clone.input(AppMsg::LoadNoteFromSidebar { name: note_name.to_string() });
+                                        sender_clone.input(AppMsg::CloseBaseView);
+                                    });
+                                    
+                                    // Configurar callback para recargar cuando cambie el source_type
+                                    let sender_clone = sender.clone();
+                                    let base_id_str = base_id.clone();
+                                    widget.on_source_type_changed(move || {
+                                        // Recargar la base con el nuevo source_type
+                                        sender_clone.input(AppMsg::LoadBase(base_id_str.clone()));
+                                    });
+                                    
+                                    // Configurar callback para cerrar sidebar al hacer clic en la vista
+                                    let sender_clone = sender.clone();
+                                    widget.on_view_clicked(move || {
+                                        sender_clone.input(AppMsg::CloseSidebar);
+                                    });
+                                }
+                                Err(e) => {
+                                    eprintln!("Error al parsear config de base: {}", e);
+                                }
+                            }
+                            
+                            // Mostrar la vista de base
+                            self.content_stack.set_visible_child_name("base");
+                        }
+                        Ok(None) => {
+                            eprintln!("Base no encontrada: {}", id);
+                        }
+                        Err(e) => {
+                            eprintln!("Error al cargar base: {}", e);
+                        }
+                    }
+                }
+            }
+            
+            AppMsg::CloseBaseView => {
+                // Volver al editor
+                *self.current_base_id.borrow_mut() = None;
+                self.content_stack.set_visible_child_name("editor");
+            }
+            
+            AppMsg::DeleteBase(base_id) => {
+                // Parsear base_id como i64
+                if let Ok(id) = base_id.parse::<i64>() {
+                    match self.notes_db.delete_base(id) {
+                        Ok(_) => {
+                            sender.input(AppMsg::RefreshBasesPanel);
+                        }
+                        Err(e) => {
+                            eprintln!("Error al eliminar base: {}", e);
+                        }
+                    }
+                }
+            }
+
             AppMsg::KeyPress { key, modifiers } => {
                 let current_mode = *self.mode.borrow();
 
@@ -5951,6 +6711,7 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
                 sender.input(AppMsg::CheckTagCompletion);
                 println!("DEBUG: Enviando CheckNoteMention desde GtkInsertText");
                 sender.input(AppMsg::CheckNoteMention);
+                sender.input(AppMsg::CheckPropertyCompletion);
             }
 
             AppMsg::GtkDeleteRange { start, end } => {
@@ -6236,6 +6997,100 @@ Puedes abrir una ventana flotante de notas rápidas desde **cualquier aplicació
 
                     // Resetear la bandera después de un breve delay
                     let flag = self.just_completed_mention.clone();
+                    gtk::glib::timeout_add_local_once(
+                        std::time::Duration::from_millis(50),
+                        move || {
+                            *flag.borrow_mut() = false;
+                        },
+                    );
+                }
+            }
+
+            AppMsg::CheckPropertyCompletion => {
+                // Verificar si hay [campo:: para autocompletar valores de propiedades
+                if *self.just_completed_property.borrow() {
+                    return;
+                }
+
+                // Solo en modo INSERT
+                if *self.mode.borrow() != EditorMode::Insert {
+                    return;
+                }
+
+                // Obtener texto alrededor del cursor
+                let cursor_mark = self.text_buffer.get_insert();
+                let cursor_iter = self.text_buffer.iter_at_mark(&cursor_mark);
+
+                // Obtener línea actual hasta el cursor
+                let mut line_start = cursor_iter.clone();
+                line_start.set_line_offset(0);
+                let line_text = self.text_buffer.text(&line_start, &cursor_iter, false);
+
+                // Buscar patrón [campo:: 
+                // Regex simplificado: buscar último [ y ver si tiene campo::
+                if let Some(bracket_pos) = line_text.rfind('[') {
+                    let after_bracket = &line_text[bracket_pos + 1..];
+                    
+                    // Verificar que no esté cerrado (no hay ])
+                    if !after_bracket.contains(']') {
+                        // Buscar ::
+                        if let Some(colon_pos) = after_bracket.find("::") {
+                            let property_key = after_bracket[..colon_pos].trim();
+                            let value_prefix = after_bracket[colon_pos + 2..].to_string();
+                            
+                            // Validar que el nombre del campo es válido (empieza con letra)
+                            if !property_key.is_empty() 
+                                && property_key.chars().next().map(|c| c.is_alphabetic()).unwrap_or(false) 
+                            {
+                                *self.current_property_key.borrow_mut() = Some(property_key.to_string());
+                                *self.current_property_prefix.borrow_mut() = Some(value_prefix.clone());
+                                
+                                // Mostrar popup con sugerencias de valores
+                                self.show_property_suggestions(property_key, &value_prefix, &sender);
+                                return;
+                            }
+                        }
+                    }
+                }
+
+                // Si llegamos aquí, no hay propiedad activa
+                *self.current_property_key.borrow_mut() = None;
+                *self.current_property_prefix.borrow_mut() = None;
+                self.property_completion_popup.popdown();
+            }
+
+            AppMsg::CompleteProperty(value) => {
+                // Obtener la key y prefix actuales
+                let key_opt = self.current_property_key.borrow().clone();
+                let prefix_opt = self.current_property_prefix.borrow().clone();
+
+                if let (Some(_key), Some(prefix)) = (key_opt, prefix_opt) {
+                    // Limpiar estado ANTES de modificar el buffer
+                    *self.current_property_key.borrow_mut() = None;
+                    *self.current_property_prefix.borrow_mut() = None;
+                    self.property_completion_popup.popdown();
+
+                    // Activar bandera para evitar que se reabra el popover
+                    *self.just_completed_property.borrow_mut() = true;
+
+                    let cursor_mark = self.text_buffer.get_insert();
+                    let cursor_iter = self.text_buffer.iter_at_mark(&cursor_mark);
+
+                    // Retroceder para borrar el prefix actual
+                    let mut start_iter = cursor_iter.clone();
+                    start_iter.backward_chars(prefix.len() as i32);
+
+                    // Borrar el prefix y escribir el valor completo + ]
+                    let mut end_iter = cursor_iter.clone();
+                    self.text_buffer.delete(&mut start_iter, &mut end_iter);
+                    self.text_buffer.insert(&mut start_iter, &format!("{}]", value));
+
+                    // Colocar cursor después del ]
+                    self.text_buffer.place_cursor(&start_iter);
+                    self.text_view.grab_focus();
+
+                    // Resetear la bandera después de un breve delay
+                    let flag = self.just_completed_property.clone();
                     gtk::glib::timeout_add_local_once(
                         std::time::Duration::from_millis(50),
                         move || {
@@ -12505,6 +13360,9 @@ impl MainApp {
         // Detectar menciones @ de notas para backlinks
         self.detect_note_mentions(clean_line, line_offset);
 
+        // Detectar y aplicar estilos a propiedades inline [campo::valor] y [campo:::valor]
+        self.apply_inline_property_styles(clean_line, line_start);
+
         let mut clean_pos = 0;
         let mut orig_pos = 0;
         let mut in_bold = false;
@@ -12625,6 +13483,51 @@ impl MainApp {
             }
 
             orig_pos += 1;
+        }
+    }
+
+    /// Aplica estilos visuales a propiedades inline [campo::valor] y [campo:::valor]
+    fn apply_inline_property_styles(&self, line: &str, line_start: &gtk::TextIter) {
+        // Usar regex simple para detectar propiedades inline en la línea
+        // Formato: [algo::valor] o [algo:::valor]
+        let mut pos = 0;
+        while let Some(bracket_start) = line[pos..].find('[') {
+            let absolute_start = pos + bracket_start;
+            
+            if let Some(bracket_end) = line[absolute_start..].find(']') {
+                let absolute_end = absolute_start + bracket_end;
+                let content = &line[absolute_start + 1..absolute_end];
+                
+                // Verificar si contiene :: o ::: (propiedad inline)
+                let is_hidden = content.contains(":::");
+                let is_property = content.contains("::");
+                
+                if is_property {
+                    // Calcular posiciones en caracteres
+                    let char_start = line[..absolute_start].chars().count();
+                    let char_end = line[..absolute_end + 1].chars().count();
+                    
+                    let mut start_iter = line_start.clone();
+                    start_iter.forward_chars(char_start as i32);
+                    
+                    let mut end_iter = line_start.clone();
+                    end_iter.forward_chars(char_end as i32);
+                    
+                    let tag_name = if is_hidden {
+                        "inline-property-hidden"
+                    } else {
+                        "inline-property"
+                    };
+                    
+                    if let Some(tag) = self.text_buffer.tag_table().lookup(tag_name) {
+                        self.text_buffer.apply_tag(&tag, &start_iter, &end_iter);
+                    }
+                }
+                
+                pos = absolute_end + 1;
+            } else {
+                break;
+            }
         }
     }
 
@@ -12943,6 +13846,16 @@ impl MainApp {
         blockquote_tag.set_left_margin(20);
         tag_table.add(&blockquote_tag);
 
+        // Inline property visible [campo::valor] - fondo con color de acento
+        let inline_prop_tag = gtk::TextTag::new(Some("inline-property"));
+        inline_prop_tag.set_weight(600);
+        tag_table.add(&inline_prop_tag);
+
+        // Inline property hidden [campo:::valor] - invisible
+        let inline_prop_hidden_tag = gtk::TextTag::new(Some("inline-property-hidden"));
+        inline_prop_hidden_tag.set_invisible(true);
+        tag_table.add(&inline_prop_hidden_tag);
+
         // Aplicar colores del tema
         self.update_text_tag_colors();
     }
@@ -12977,6 +13890,19 @@ impl MainApp {
         // Actualizar el tag de link
         if let Some(link_tag) = tag_table.lookup("link") {
             link_tag.set_foreground_rgba(Some(&theme_colors.link_color));
+        }
+
+        // Actualizar el tag de propiedad inline visible
+        if let Some(inline_prop_tag) = tag_table.lookup("inline-property") {
+            // Usar el color de link con algo de transparencia como fondo
+            let accent = &theme_colors.link_color;
+            inline_prop_tag.set_background_rgba(Some(&gtk::gdk::RGBA::new(
+                accent.red(),
+                accent.green(),
+                accent.blue(),
+                0.2,
+            )));
+            inline_prop_tag.set_foreground_rgba(Some(&theme_colors.link_color));
         }
     }
 
@@ -13070,6 +13996,30 @@ impl MainApp {
                     continue;
                 }
                 _ => continue,
+            };
+
+            if let Some(tag) = self.text_buffer.tag_table().lookup(tag_name) {
+                self.text_buffer.apply_tag(&tag, &start_iter, &end_iter);
+            }
+        }
+
+        // Aplicar estilos a propiedades inline [campo::valor] y [campo:::valor]
+        let inline_props = InlinePropertyParser::parse(&text);
+        for prop in inline_props {
+            // Convertir byte offset a char offset
+            let char_start = text[..prop.char_start.min(text.len())].chars().count();
+            let char_end = text[..prop.char_end.min(text.len())].chars().count();
+
+            let mut start_iter = self.text_buffer.start_iter();
+            start_iter.set_offset(char_start as i32);
+
+            let mut end_iter = self.text_buffer.start_iter();
+            end_iter.set_offset(char_end as i32);
+
+            let tag_name = if prop.hidden {
+                "inline-property-hidden"
+            } else {
+                "inline-property"
             };
 
             if let Some(tag) = self.text_buffer.tag_table().lookup(tag_name) {
@@ -13794,6 +14744,86 @@ impl MainApp {
             self.note_mention_popup.popup();
         } else {
             println!("DEBUG: Error al listar notas");
+        }
+    }
+
+    fn show_property_suggestions(&self, property_key: &str, prefix: &str, sender: &ComponentSender<Self>) {
+        // Limpiar sugerencias anteriores
+        while let Some(row) = self.property_completion_list.row_at_index(0) {
+            self.property_completion_list.remove(&row);
+        }
+
+        // Obtener valores distintos para esta propiedad desde la BD
+        if let Ok(values) = self.notes_db.get_distinct_values(property_key) {
+            let prefix_lower = prefix.to_lowercase();
+            let matches: Vec<_> = values
+                .iter()
+                .filter(|v| v.to_lowercase().starts_with(&prefix_lower) || prefix.is_empty())
+                .take(8)
+                .collect();
+
+            if matches.is_empty() {
+                self.property_completion_popup.popdown();
+                return;
+            }
+
+            // Añadir header con el nombre de la propiedad
+            let header = gtk::Label::new(Some(&format!("📝 {} valores", property_key)));
+            header.set_xalign(0.0);
+            header.add_css_class("dim-label");
+            header.add_css_class("caption");
+            header.set_margin_all(6);
+            
+            let header_row = gtk::ListBoxRow::new();
+            header_row.set_child(Some(&header));
+            header_row.set_activatable(false);
+            header_row.set_selectable(false);
+            self.property_completion_list.append(&header_row);
+
+            // Añadir cada sugerencia de valor
+            for value in matches {
+                let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+                row.set_margin_all(8);
+
+                let label = gtk::Label::new(Some(value));
+                label.set_xalign(0.0);
+                label.set_hexpand(true);
+
+                row.append(&label);
+
+                let list_row = gtk::ListBoxRow::new();
+                list_row.set_child(Some(&row));
+                list_row.set_activatable(true);
+
+                let value_clone = value.clone();
+                let gesture = gtk::GestureClick::new();
+                gesture.connect_released(gtk::glib::clone!(
+                    #[strong]
+                    sender,
+                    move |_, _, _, _| {
+                        sender.input(AppMsg::CompleteProperty(value_clone.clone()));
+                    }
+                ));
+                list_row.add_controller(gesture);
+
+                self.property_completion_list.append(&list_row);
+                list_row.show();
+            }
+
+            // Posicionar el popover cerca del cursor
+            let cursor_mark = self.text_buffer.get_insert();
+            let cursor_iter = self.text_buffer.iter_at_mark(&cursor_mark);
+            let cursor_rect = self.text_view.iter_location(&cursor_iter);
+
+            let (window_x, window_y) = self.text_view.buffer_to_window_coords(
+                gtk::TextWindowType::Widget,
+                cursor_rect.x(),
+                cursor_rect.y() + cursor_rect.height(),
+            );
+
+            let rect = gtk::gdk::Rectangle::new(window_x, window_y, 1, 1);
+            self.property_completion_popup.set_pointing_to(Some(&rect));
+            self.property_completion_popup.popup();
         }
     }
 
@@ -18795,8 +19825,6 @@ impl MainApp {
         let i18n = self.i18n.borrow();
 
         // Actualizar tooltips
-        self.sidebar_toggle_button
-            .set_tooltip_text(Some(&i18n.t("show_hide_notes")));
         self.search_toggle_button
             .set_tooltip_text(Some(&i18n.t("search_notes")));
         self.new_note_button
@@ -18849,8 +19877,12 @@ impl MainApp {
 
         // Actualizar display de TODOs
         self.refresh_todos_summary();
+        
+        // Actualizar el widget de bases de datos
+        drop(i18n); // Liberar borrow antes de actualizar base_table_widget
+        self.base_table_widget.borrow_mut().update_language();
 
-        println!("UI actualizada al idioma: {:?}", i18n.current_language());
+        println!("UI actualizada al idioma: {:?}", self.i18n.borrow().current_language());
     }
 
     fn create_settings_popover(&self, sender: &ComponentSender<Self>) {
@@ -19419,8 +20451,6 @@ impl MainApp {
         let i18n = self.i18n.borrow();
 
         // Actualizar todos los tooltips con el idioma inicial
-        self.sidebar_toggle_button
-            .set_tooltip_text(Some(&i18n.t("show_hide_notes")));
         self.search_toggle_button
             .set_tooltip_text(Some(&i18n.t("search_notes")));
         self.new_note_button

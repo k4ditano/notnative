@@ -953,6 +953,134 @@ pub fn get_all_tool_definitions() -> Vec<MCPTool> {
                 "required": ["id"]
             }),
         },
+        // === Bases (Vistas de Base de Datos sobre Notas) ===
+        MCPTool {
+            name: "CreateBase".to_string(),
+            description: "Crea una nueva Base (vista de base de datos sobre notas). Las Bases permiten filtrar, ordenar y visualizar notas como una tabla dinámica.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Nombre de la Base (ej: 'Tareas', 'Proyectos', 'Ideas')"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Descripción opcional de la Base"
+                    },
+                    "source_folder": {
+                        "type": "string",
+                        "description": "Carpeta de origen (opcional, si se omite busca en todas las notas)"
+                    }
+                },
+                "required": ["name"]
+            }),
+        },
+        MCPTool {
+            name: "QueryBase".to_string(),
+            description: "Consulta una Base y obtiene las notas que coinciden con sus filtros. Devuelve las propiedades de cada nota.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Nombre de la Base a consultar"
+                    },
+                    "view_name": {
+                        "type": "string",
+                        "description": "Nombre de la vista específica (opcional, usa la activa por defecto)"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Número máximo de resultados (opcional)"
+                    }
+                },
+                "required": ["name"]
+            }),
+        },
+        MCPTool {
+            name: "AddBaseFilter".to_string(),
+            description: "Añade un filtro a una Base. Los filtros determinan qué notas aparecen en la Base.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "base_name": {
+                        "type": "string",
+                        "description": "Nombre de la Base"
+                    },
+                    "property": {
+                        "type": "string",
+                        "description": "Nombre de la propiedad a filtrar (ej: 'status', 'tags', 'date', 'priority')"
+                    },
+                    "operator": {
+                        "type": "string",
+                        "enum": ["equals", "not_equals", "contains", "not_contains", "starts_with", "ends_with", "greater_than", "greater_or_equal", "less_than", "less_or_equal", "is_empty", "is_not_empty"],
+                        "description": "Operador de comparación"
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "Valor a comparar (opcional para is_empty/is_not_empty)"
+                    }
+                },
+                "required": ["base_name", "property", "operator"]
+            }),
+        },
+        MCPTool {
+            name: "ListBases".to_string(),
+            description: "Lista todas las Bases disponibles.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        },
+        MCPTool {
+            name: "DeleteBase".to_string(),
+            description: "Elimina una Base.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Nombre de la Base a eliminar"
+                    }
+                },
+                "required": ["name"]
+            }),
+        },
+        MCPTool {
+            name: "DiscoverProperties".to_string(),
+            description: "Descubre todas las propiedades (campos de frontmatter) usadas en las notas.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "folder": {
+                        "type": "string",
+                        "description": "Carpeta específica para buscar (opcional)"
+                    }
+                },
+                "required": []
+            }),
+        },
+        MCPTool {
+            name: "SetBaseColumns".to_string(),
+            description: "Configura las columnas (propiedades) que se muestran en una Base.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "base_name": {
+                        "type": "string",
+                        "description": "Nombre de la Base"
+                    },
+                    "columns": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Lista de propiedades a mostrar como columnas (ej: ['title', 'status', 'tags', 'date'])"
+                    }
+                },
+                "required": ["base_name", "columns"]
+            }),
+        },
     ]
 }
 

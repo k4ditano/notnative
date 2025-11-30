@@ -179,6 +179,51 @@ impl MCPToolExecutor {
 
             MCPToolCall::DeleteReminder { id } => self.delete_reminder(id),
 
+            // === Bases (Vistas de Base de Datos sobre Notas) ===
+            MCPToolCall::CreateBase {
+                name,
+                description,
+                source_folder,
+            } => self.create_base(&name, description.as_deref(), source_folder.as_deref()),
+
+            MCPToolCall::QueryBase {
+                name,
+                view_name,
+                limit,
+            } => self.query_base(&name, view_name.as_deref(), limit),
+
+            MCPToolCall::AddBaseFilter {
+                base_name,
+                property,
+                operator,
+                value,
+            } => self.add_base_filter(&base_name, &property, &operator, value.as_deref()),
+
+            MCPToolCall::RemoveBaseFilter {
+                base_name,
+                property,
+            } => self.remove_base_filter(&base_name, &property),
+
+            MCPToolCall::ListBases { .. } => self.list_bases(),
+
+            MCPToolCall::DeleteBase { name } => self.delete_base(&name),
+
+            MCPToolCall::GetBaseSchema { name } => self.get_base_schema(&name),
+
+            MCPToolCall::AddBaseView {
+                base_name,
+                view_name,
+                view_type,
+            } => self.add_base_view(&base_name, &view_name, view_type.as_deref()),
+
+            MCPToolCall::SetBaseColumns { base_name, columns } => {
+                self.set_base_columns(&base_name, &columns)
+            }
+
+            MCPToolCall::DiscoverProperties { folder } => {
+                self.discover_properties(folder.as_deref())
+            }
+
             // === UI - DESHABILITADAS (pendiente de implementar) ===
             // MCPToolCall::OpenNote { .. }
             // | MCPToolCall::ShowNotification { .. }
@@ -2175,6 +2220,371 @@ impl MCPToolExecutor {
         Ok(MCPToolResult::success(json!({
             "message": format!("✓ Recordatorio {} eliminado", id),
             "reminder_id": id
+        })))
+    }
+
+    // ==================== BASES (Vistas de Base de Datos) ====================
+
+    fn create_base(
+        &self,
+        name: &str,
+        description: Option<&str>,
+        source_folder: Option<&str>,
+    ) -> Result<MCPToolResult> {
+        use crate::core::{Base, BaseView};
+
+        // Crear la Base
+        let mut base = Base::new(name);
+        base.description = description.map(|s| s.to_string());
+        base.source_folder = source_folder.map(|s| s.to_string());
+
+        // Serializar a YAML
+        let config_yaml = base.serialize().map_err(|e| anyhow::anyhow!("{}", e))?;
+
+        // Guardar en la BD
+        let db = self.notes_db.borrow();
+        let base_id = db.create_base(name, description, source_folder, &config_yaml)?;
+
+        Ok(MCPToolResult::success(json!({
+            "message": format!("✓ Base '{}' creada correctamente", name),
+            "base_id": base_id,
+            "name": name,
+            "description": description,
+            "source_folder": source_folder
+        })))
+    }
+
+    fn query_base(
+        &self,
+        name: &str,
+        view_name: Option<&str>,
+        limit: Option<i32>,
+    ) -> Result<MCPToolResult> {
+        use crate::core::{Base, BaseQueryEngine};
+
+        // Obtener la Base de la BD
+        let db = self.notes_db.borrow();
+        let base_data = db.get_base_by_name(name)?;
+
+        match base_data {
+            Some((id, name, description, source_folder, config_yaml, active_view)) => {
+                // Parsear la configuración
+                let mut base = Base::parse(&config_yaml).map_err(|e| anyhow::anyhow!("{}", e))?;
+
+                // Si se especifica una vista, buscarla
+                if let Some(vn) = view_name {
+                    if let Some(idx) = base.views.iter().position(|v| v.name == vn) {
+                        base.set_active_view(idx);
+                    }
+                }
+
+                // Ejecutar query
+                let engine = BaseQueryEngine::new(&db, self.notes_dir.root());
+                let results = engine.query(&base)?;
+
+                // Aplicar límite
+                let results: Vec<_> = if let Some(lim) = limit {
+                    results.into_iter().take(lim as usize).collect()
+                } else {
+                    results
+                };
+
+                // Formatear resultados
+                let notes_json: Vec<_> = results
+                    .iter()
+                    .map(|note| {
+                        let props: serde_json::Map<String, serde_json::Value> = note
+                            .properties
+                            .iter()
+                            .map(|(k, v)| (k.clone(), serde_json::Value::String(v.to_display_string())))
+                            .collect();
+
+                        json!({
+                            "name": note.metadata.name,
+                            "path": note.metadata.path,
+                            "properties": props
+                        })
+                    })
+                    .collect();
+
+                Ok(MCPToolResult::success(json!({
+                    "message": format!("✓ {} notas encontradas en Base '{}'", notes_json.len(), name),
+                    "base": name,
+                    "view": base.active_view().map(|v| &v.name),
+                    "notes": notes_json,
+                    "total": notes_json.len()
+                })))
+            }
+            None => Ok(MCPToolResult::error(format!("Base '{}' no encontrada", name))),
+        }
+    }
+
+    fn add_base_filter(
+        &self,
+        base_name: &str,
+        property: &str,
+        operator: &str,
+        value: Option<&str>,
+    ) -> Result<MCPToolResult> {
+        use crate::core::{Base, Filter, FilterOperator, PropertyValue};
+
+        // Obtener la Base
+        let db = self.notes_db.borrow();
+        let base_data = db.get_base_by_name(base_name)?;
+
+        match base_data {
+            Some((id, _, _, _, config_yaml, active_view)) => {
+                let mut base = Base::parse(&config_yaml).map_err(|e| anyhow::anyhow!("{}", e))?;
+
+                // Parsear operador
+                let op = match operator {
+                    "equals" => FilterOperator::Equals,
+                    "not_equals" => FilterOperator::NotEquals,
+                    "contains" => FilterOperator::Contains,
+                    "not_contains" => FilterOperator::NotContains,
+                    "starts_with" => FilterOperator::StartsWith,
+                    "ends_with" => FilterOperator::EndsWith,
+                    "greater_than" => FilterOperator::GreaterThan,
+                    "greater_or_equal" => FilterOperator::GreaterOrEqual,
+                    "less_than" => FilterOperator::LessThan,
+                    "less_or_equal" => FilterOperator::LessOrEqual,
+                    "is_empty" => FilterOperator::IsEmpty,
+                    "is_not_empty" => FilterOperator::IsNotEmpty,
+                    _ => return Ok(MCPToolResult::error(format!("Operador '{}' no válido", operator))),
+                };
+
+                // Crear el valor
+                let prop_value = match value {
+                    Some(v) => {
+                        // Intentar parsear como número
+                        if let Ok(n) = v.parse::<f64>() {
+                            PropertyValue::Number(n)
+                        } else if v == "true" || v == "false" {
+                            PropertyValue::Checkbox(v == "true")
+                        } else {
+                            PropertyValue::Text(v.to_string())
+                        }
+                    }
+                    None => PropertyValue::Null,
+                };
+
+                // Añadir filtro a la vista activa
+                if let Some(view) = base.active_view_mut() {
+                    view.filter.filters.push(Filter::new(property, op.clone(), prop_value));
+                }
+
+                // Guardar cambios
+                let new_config = base.serialize().map_err(|e| anyhow::anyhow!("{}", e))?;
+                db.update_base(id, &new_config, active_view)?;
+
+                Ok(MCPToolResult::success(json!({
+                    "message": format!("✓ Filtro añadido: {} {} {}", property, operator, value.unwrap_or("(vacío)")),
+                    "base": base_name,
+                    "property": property,
+                    "operator": operator,
+                    "value": value
+                })))
+            }
+            None => Ok(MCPToolResult::error(format!("Base '{}' no encontrada", base_name))),
+        }
+    }
+
+    fn remove_base_filter(&self, base_name: &str, property: &str) -> Result<MCPToolResult> {
+        use crate::core::Base;
+
+        let db = self.notes_db.borrow();
+        let base_data = db.get_base_by_name(base_name)?;
+
+        match base_data {
+            Some((id, _, _, _, config_yaml, active_view)) => {
+                let mut base = Base::parse(&config_yaml).map_err(|e| anyhow::anyhow!("{}", e))?;
+
+                if let Some(view) = base.active_view_mut() {
+                    let before = view.filter.filters.len();
+                    view.filter.filters.retain(|f| f.property != property);
+                    let removed = before - view.filter.filters.len();
+
+                    if removed > 0 {
+                        let new_config = base.serialize().map_err(|e| anyhow::anyhow!("{}", e))?;
+                        db.update_base(id, &new_config, active_view)?;
+
+                        Ok(MCPToolResult::success(json!({
+                            "message": format!("✓ {} filtro(s) removidos para '{}'", removed, property),
+                            "base": base_name,
+                            "property": property,
+                            "removed": removed
+                        })))
+                    } else {
+                        Ok(MCPToolResult::success(json!({
+                            "message": format!("No se encontraron filtros para '{}'", property),
+                            "base": base_name,
+                            "removed": 0
+                        })))
+                    }
+                } else {
+                    Ok(MCPToolResult::error("No hay vista activa".to_string()))
+                }
+            }
+            None => Ok(MCPToolResult::error(format!("Base '{}' no encontrada", base_name))),
+        }
+    }
+
+    fn list_bases(&self) -> Result<MCPToolResult> {
+        let db = self.notes_db.borrow();
+        let bases = db.list_bases()?;
+
+        let bases_json: Vec<_> = bases
+            .iter()
+            .map(|(id, name, desc, folder)| {
+                json!({
+                    "id": id,
+                    "name": name,
+                    "description": desc,
+                    "source_folder": folder
+                })
+            })
+            .collect();
+
+        Ok(MCPToolResult::success(json!({
+            "message": format!("✓ {} Bases encontradas", bases_json.len()),
+            "bases": bases_json,
+            "total": bases_json.len()
+        })))
+    }
+
+    fn delete_base(&self, name: &str) -> Result<MCPToolResult> {
+        let db = self.notes_db.borrow();
+        let base_data = db.get_base_by_name(name)?;
+
+        match base_data {
+            Some((id, _, _, _, _, _)) => {
+                db.delete_base(id)?;
+                Ok(MCPToolResult::success(json!({
+                    "message": format!("✓ Base '{}' eliminada", name),
+                    "name": name
+                })))
+            }
+            None => Ok(MCPToolResult::error(format!("Base '{}' no encontrada", name))),
+        }
+    }
+
+    fn get_base_schema(&self, name: &str) -> Result<MCPToolResult> {
+        use crate::core::Base;
+
+        let db = self.notes_db.borrow();
+        let base_data = db.get_base_by_name(name)?;
+
+        match base_data {
+            Some((id, name, description, source_folder, config_yaml, active_view)) => {
+                let base = Base::parse(&config_yaml).map_err(|e| anyhow::anyhow!("{}", e))?;
+
+                let views_json: Vec<_> = base
+                    .views
+                    .iter()
+                    .map(|v| {
+                        json!({
+                            "name": v.name,
+                            "type": format!("{:?}", v.view_type),
+                            "filters": v.filter.filters.len(),
+                            "columns": v.columns.iter().map(|c| &c.property).collect::<Vec<_>>()
+                        })
+                    })
+                    .collect();
+
+                Ok(MCPToolResult::success(json!({
+                    "name": name,
+                    "description": description,
+                    "source_folder": source_folder,
+                    "active_view": active_view,
+                    "views": views_json
+                })))
+            }
+            None => Ok(MCPToolResult::error(format!("Base '{}' no encontrada", name))),
+        }
+    }
+
+    fn add_base_view(
+        &self,
+        base_name: &str,
+        view_name: &str,
+        view_type: Option<&str>,
+    ) -> Result<MCPToolResult> {
+        use crate::core::{Base, BaseView, ViewType};
+
+        let db = self.notes_db.borrow();
+        let base_data = db.get_base_by_name(base_name)?;
+
+        match base_data {
+            Some((id, _, _, _, config_yaml, active_view)) => {
+                let mut base = Base::parse(&config_yaml).map_err(|e| anyhow::anyhow!("{}", e))?;
+
+                let vt = match view_type {
+                    Some("list") => ViewType::List,
+                    Some("board") => ViewType::Board,
+                    Some("gallery") => ViewType::Gallery,
+                    _ => ViewType::Table,
+                };
+
+                let mut new_view = BaseView::new(view_name);
+                new_view.view_type = vt;
+
+                base.add_view(new_view);
+
+                let new_config = base.serialize().map_err(|e| anyhow::anyhow!("{}", e))?;
+                db.update_base(id, &new_config, active_view)?;
+
+                Ok(MCPToolResult::success(json!({
+                    "message": format!("✓ Vista '{}' añadida a Base '{}'", view_name, base_name),
+                    "base": base_name,
+                    "view": view_name,
+                    "type": view_type.unwrap_or("table")
+                })))
+            }
+            None => Ok(MCPToolResult::error(format!("Base '{}' no encontrada", base_name))),
+        }
+    }
+
+    fn set_base_columns(&self, base_name: &str, columns: &[String]) -> Result<MCPToolResult> {
+        use crate::core::{Base, ColumnConfig};
+
+        let db = self.notes_db.borrow();
+        let base_data = db.get_base_by_name(base_name)?;
+
+        match base_data {
+            Some((id, _, _, _, config_yaml, active_view)) => {
+                let mut base = Base::parse(&config_yaml).map_err(|e| anyhow::anyhow!("{}", e))?;
+
+                if let Some(view) = base.active_view_mut() {
+                    view.columns = columns
+                        .iter()
+                        .map(|c| ColumnConfig::new(c.clone()))
+                        .collect();
+                }
+
+                let new_config = base.serialize().map_err(|e| anyhow::anyhow!("{}", e))?;
+                db.update_base(id, &new_config, active_view)?;
+
+                Ok(MCPToolResult::success(json!({
+                    "message": format!("✓ Columnas actualizadas: {:?}", columns),
+                    "base": base_name,
+                    "columns": columns
+                })))
+            }
+            None => Ok(MCPToolResult::error(format!("Base '{}' no encontrada", base_name))),
+        }
+    }
+
+    fn discover_properties(&self, folder: Option<&str>) -> Result<MCPToolResult> {
+        use crate::core::BaseQueryEngine;
+
+        let db = self.notes_db.borrow();
+        let engine = BaseQueryEngine::new(&db, self.notes_dir.root());
+        let properties = engine.discover_properties(folder)?;
+
+        Ok(MCPToolResult::success(json!({
+            "message": format!("✓ {} propiedades descubiertas", properties.len()),
+            "properties": properties,
+            "folder": folder
         })))
     }
 

@@ -329,6 +329,57 @@ pub enum MCPToolCall {
     CompleteReminder {
         id: i64,
     },
+
+    // === Bases (Vistas de Base de Datos sobre Notas) ===
+    CreateBase {
+        name: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        description: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        source_folder: Option<String>,
+    },
+    QueryBase {
+        name: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        view_name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        limit: Option<i32>,
+    },
+    AddBaseFilter {
+        base_name: String,
+        property: String,
+        operator: String, // "equals", "contains", "greater_than", "less_than", "is_empty", etc.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        value: Option<String>,
+    },
+    RemoveBaseFilter {
+        base_name: String,
+        property: String,
+    },
+    ListBases {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        _dummy: Option<()>,
+    },
+    DeleteBase {
+        name: String,
+    },
+    GetBaseSchema {
+        name: String,
+    },
+    AddBaseView {
+        base_name: String,
+        view_name: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        view_type: Option<String>, // "table", "list", "board"
+    },
+    SetBaseColumns {
+        base_name: String,
+        columns: Vec<String>, // Lista de propiedades a mostrar
+    },
+    DiscoverProperties {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        folder: Option<String>,
+    },
 }
 
 /// Resultado de la ejecución de una herramienta

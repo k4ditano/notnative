@@ -5,6 +5,40 @@ All notable changes to NotNative will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.15] - 2025-11-30
+
+### Added
+- **🗃️ Bases de Datos Inline**: Crea bases de datos directamente en tus notas
+  - Sintaxis: `:::database{name="MiBase" columns="col1,col2,col3"}`
+  - Tabla interactiva con añadir/editar/eliminar filas
+  - Filtrado avanzado con múltiples condiciones
+  - Ordenación por cualquier columna
+  - Mostrar/ocultar columnas
+  - Búsqueda rápida en tabla
+
+- **🔗 Propiedades Inline Mejoradas**: Metadatos al estilo Notion
+  - Sintaxis YAML en frontmatter
+  - Propiedades agrupadas con group_id
+  - Visualización mejorada en la UI
+
+- **📝 Nota de Novedades Automática**: Sistema de release notes
+  - Detecta automáticamente cuando hay una nueva versión
+  - Crea nota de novedades en carpeta Notnative/
+  - Solo para usuarios que actualizan (no primera instalación)
+
+- **🌐 Cambio de Idioma Dinámico**: UI multilenguaje en tiempo real
+  - Español e Inglés
+  - Cambio sin reiniciar la app
+  - Bases de datos también se traducen dinámicamente
+
+### Fixed
+- **🔧 Traducciones Base de Datos**: Interfaz completa en español/inglés
+  - Popovers de filtro, ordenación y columnas traducidos
+  - Operadores de filtro traducidos
+  - Placeholders y tooltips traducidos
+
+- **🎨 Icono de Filtro**: Cambiado de lupa a embudo (view-filter-symbolic)
+
 ## [0.1.2] - 2025-01-XX
 
 ### Added

@@ -94,6 +94,81 @@ pub struct SearchQuery {
     pub date_to: Option<DateTime<Utc>>,
 }
 
+/// Fila de propiedad inline de la base de datos
+#[derive(Debug, Clone)]
+pub struct InlinePropertyRow {
+    pub id: i64,
+    pub key: String,
+    pub property_type: String,
+    pub value_text: Option<String>,
+    pub value_number: Option<f64>,
+    pub value_bool: Option<i64>,
+    pub line_number: i64,
+    pub char_start: i64,
+    pub char_end: i64,
+    pub linked_note_id: Option<i64>,
+    /// ID de grupo para propiedades agrupadas [a::1, b::2]
+    /// NULL = propiedad individual, número = grupo de propiedades relacionadas
+    pub group_id: Option<i64>,
+}
+
+impl InlinePropertyRow {
+    /// Convertir a PropertyValue
+    pub fn to_property_value(&self) -> super::property::PropertyValue {
+        use super::property::PropertyValue;
+
+        match self.property_type.as_str() {
+            "text" => PropertyValue::Text(self.value_text.clone().unwrap_or_default()),
+            "number" => PropertyValue::Number(self.value_number.unwrap_or(0.0)),
+            "checkbox" => PropertyValue::Checkbox(self.value_bool.unwrap_or(0) != 0),
+            "date" => PropertyValue::Date(self.value_text.clone().unwrap_or_default()),
+            "datetime" => PropertyValue::DateTime(self.value_text.clone().unwrap_or_default()),
+            "list" => PropertyValue::List(
+                self.value_text.clone().unwrap_or_default()
+                    .split(',')
+                    .map(|s| s.to_string())
+                    .collect()
+            ),
+            "tags" => PropertyValue::Tags(
+                self.value_text.clone().unwrap_or_default()
+                    .split(',')
+                    .map(|s| s.to_string())
+                    .collect()
+            ),
+            "links" => PropertyValue::Links(
+                self.value_text.clone().unwrap_or_default()
+                    .split(',')
+                    .map(|s| s.to_string())
+                    .collect()
+            ),
+            "link" => PropertyValue::Link(self.value_text.clone().unwrap_or_default()),
+            _ => PropertyValue::Null,
+        }
+    }
+}
+
+/// Un registro agrupado de propiedades [campo1::val1, campo2::val2]
+#[derive(Debug, Clone)]
+pub struct GroupedRecord {
+    /// ID de la nota que contiene el registro
+    pub note_id: i64,
+    /// Nombre de la nota
+    pub note_name: String,
+    /// ID del grupo dentro de la nota
+    pub group_id: i64,
+    /// Propiedades del registro como pares (clave, valor)
+    pub properties: Vec<(String, String)>,
+}
+
+impl GroupedRecord {
+    /// Obtener el valor de una propiedad por clave
+    pub fn get(&self, key: &str) -> Option<&str> {
+        self.properties.iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
+    }
+}
+
 /// Base de datos SQLite para indexar notas
 pub struct NotesDatabase {
     conn: Connection,
@@ -110,7 +185,7 @@ impl std::fmt::Debug for NotesDatabase {
 
 impl NotesDatabase {
     /// Versión actual del esquema
-    const SCHEMA_VERSION: i32 = 7;
+    const SCHEMA_VERSION: i32 = 10;
 
     /// Crear o abrir base de datos en la ruta especificada
     pub fn new(path: &Path) -> Result<Self> {
@@ -327,6 +402,21 @@ impl NotesDatabase {
             // Migración v6 -> v7: Agregar icon_color a notas y carpetas
             if current_version < 7 {
                 self.migrate_to_v7()?;
+            }
+
+            // Migración v7 -> v8: Agregar tablas para Bases (vistas de base de datos)
+            if current_version < 8 {
+                self.migrate_to_v8()?;
+            }
+
+            // Migración v8 -> v9: Nuevo sistema de propiedades inline
+            if current_version < 9 {
+                self.migrate_to_v9()?;
+            }
+
+            // Migración v9 -> v10: Propiedades agrupadas con group_id
+            if current_version < 10 {
+                self.migrate_to_v10()?;
             }
 
             println!(
@@ -660,6 +750,146 @@ impl NotesDatabase {
         Ok(())
     }
 
+    /// Migración a versión 8: Agregar tablas para Bases (vistas tipo Obsidian)
+    fn migrate_to_v8(&mut self) -> Result<()> {
+        println!("Aplicando migración v8: Agregando tablas para Bases");
+
+        self.conn.execute_batch(
+            r#"
+            -- Tabla de propiedades indexadas de notas
+            -- Permite queries rápidas sobre propiedades del frontmatter
+            CREATE TABLE IF NOT EXISTS note_properties (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                note_id INTEGER NOT NULL,
+                property_key TEXT NOT NULL,
+                property_type TEXT NOT NULL,
+                value_text TEXT,
+                value_number REAL,
+                value_bool INTEGER,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE,
+                UNIQUE(note_id, property_key)
+            );
+
+            -- Índices para búsquedas rápidas de propiedades
+            CREATE INDEX IF NOT EXISTS idx_note_props_note ON note_properties(note_id);
+            CREATE INDEX IF NOT EXISTS idx_note_props_key ON note_properties(property_key);
+            CREATE INDEX IF NOT EXISTS idx_note_props_type ON note_properties(property_type);
+            CREATE INDEX IF NOT EXISTS idx_note_props_value_text ON note_properties(value_text);
+            CREATE INDEX IF NOT EXISTS idx_note_props_value_number ON note_properties(value_number);
+
+            -- Tabla de Bases (colecciones de vistas sobre notas)
+            CREATE TABLE IF NOT EXISTS bases (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT,
+                source_folder TEXT,
+                config_yaml TEXT NOT NULL,
+                active_view INTEGER DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+
+            -- Índices para bases
+            CREATE INDEX IF NOT EXISTS idx_bases_name ON bases(name);
+            CREATE INDEX IF NOT EXISTS idx_bases_folder ON bases(source_folder);
+            "#,
+        )?;
+
+        println!("  📊 Tablas 'note_properties' y 'bases' creadas");
+
+        // Actualizar versión
+        self.conn
+            .execute("REPLACE INTO schema_version (version) VALUES (8)", [])?;
+
+        Ok(())
+    }
+
+    /// Migración a versión 9: Nuevo sistema de propiedades inline [campo::valor]
+    fn migrate_to_v9(&mut self) -> Result<()> {
+        println!("Aplicando migración v9: Sistema de propiedades inline");
+
+        // Eliminar la tabla vieja note_properties (basada en frontmatter, nunca usada)
+        self.conn.execute("DROP TABLE IF EXISTS note_properties", [])?;
+
+        self.conn.execute_batch(
+            r#"
+            -- Nueva tabla para propiedades inline [campo::valor]
+            -- Permite múltiples propiedades con la misma clave en una nota
+            CREATE TABLE IF NOT EXISTS inline_properties (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                note_id INTEGER NOT NULL,
+                property_key TEXT NOT NULL,
+                property_type TEXT NOT NULL,
+                value_text TEXT,
+                value_number REAL,
+                value_bool INTEGER,
+                line_number INTEGER NOT NULL,
+                char_start INTEGER NOT NULL,
+                char_end INTEGER NOT NULL,
+                linked_note_id INTEGER,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE,
+                FOREIGN KEY (linked_note_id) REFERENCES notes(id) ON DELETE SET NULL
+            );
+
+            -- Índices para búsquedas rápidas
+            CREATE INDEX IF NOT EXISTS idx_inline_props_note ON inline_properties(note_id);
+            CREATE INDEX IF NOT EXISTS idx_inline_props_key ON inline_properties(property_key);
+            CREATE INDEX IF NOT EXISTS idx_inline_props_type ON inline_properties(property_type);
+            CREATE INDEX IF NOT EXISTS idx_inline_props_value_text ON inline_properties(value_text);
+            CREATE INDEX IF NOT EXISTS idx_inline_props_value_number ON inline_properties(value_number);
+            CREATE INDEX IF NOT EXISTS idx_inline_props_linked ON inline_properties(linked_note_id);
+            "#,
+        )?;
+
+        println!("  🏷️ Tabla 'inline_properties' creada (reemplaza note_properties)");
+
+        // Actualizar versión
+        self.conn
+            .execute("REPLACE INTO schema_version (version) VALUES (9)", [])?;
+
+        Ok(())
+    }
+
+    /// Migración a versión 10: Propiedades agrupadas [campo1::val1, campo2::val2]
+    fn migrate_to_v10(&mut self) -> Result<()> {
+        println!("Aplicando migración v10: Propiedades agrupadas con group_id");
+
+        // Verificar si la columna group_id ya existe
+        let column_exists: bool = self.conn.query_row(
+            "SELECT COUNT(*) > 0 FROM pragma_table_info('inline_properties') WHERE name = 'group_id'",
+            [],
+            |row| row.get(0),
+        ).unwrap_or(false);
+
+        if !column_exists {
+            // Añadir columna group_id para agrupar propiedades relacionadas
+            // NULL significa propiedad individual, un número agrupa propiedades del mismo "registro"
+            self.conn.execute(
+                "ALTER TABLE inline_properties ADD COLUMN group_id INTEGER",
+                [],
+            )?;
+            println!("  🔗 Columna 'group_id' añadida a inline_properties");
+        } else {
+            println!("  ℹ️ Columna 'group_id' ya existe, saltando...");
+        }
+
+        // Índice para consultas por grupo (IF NOT EXISTS es seguro)
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_inline_props_group ON inline_properties(note_id, group_id)",
+            [],
+        )?;
+
+        // Actualizar versión
+        self.conn
+            .execute("REPLACE INTO schema_version (version) VALUES (10)", [])?;
+
+        Ok(())
+    }
+
     /// Indexar una nota en la base de datos
     pub fn index_note(
         &self,
@@ -696,7 +926,285 @@ impl NotesDatabase {
             params![note_id, name, content],
         )?;
 
+        // Sincronizar propiedades inline del contenido
+        self.sync_inline_properties(note_id, content)?;
+
         Ok(note_id)
+    }
+
+    /// Sincronizar propiedades inline [campo::valor] de una nota
+    pub fn sync_inline_properties(&self, note_id: i64, content: &str) -> Result<()> {
+        use super::inline_property::InlinePropertyParser;
+        use super::property::PropertyValue;
+
+        let now = Utc::now().timestamp();
+
+        // Parsear propiedades del contenido
+        let properties = InlinePropertyParser::parse(content);
+
+        // Eliminar propiedades anteriores de esta nota
+        self.conn.execute(
+            "DELETE FROM inline_properties WHERE note_id = ?1",
+            params![note_id],
+        )?;
+
+        // Insertar nuevas propiedades
+        for prop in properties {
+            let (value_text, value_number, value_bool) = match &prop.value {
+                PropertyValue::Text(s) => (Some(s.clone()), None, None),
+                PropertyValue::Number(n) => (None, Some(*n), None),
+                PropertyValue::Checkbox(b) => (None, None, Some(*b as i64)),
+                PropertyValue::Date(d) => (Some(d.clone()), None, None),
+                PropertyValue::DateTime(dt) => (Some(dt.clone()), None, None),
+                PropertyValue::List(items) => (Some(items.join(",")), None, None),
+                PropertyValue::Tags(tags) => (Some(tags.join(",")), None, None),
+                PropertyValue::Links(links) => (Some(links.join(",")), None, None),
+                PropertyValue::Link(note) => (Some(note.clone()), None, None),
+                PropertyValue::Null => (None, None, None),
+            };
+
+            // Resolver linked_note_id si es un Link
+            let linked_note_id: Option<i64> = if let Some(ref note_name) = prop.linked_note {
+                self.conn
+                    .query_row(
+                        "SELECT id FROM notes WHERE name = ?1",
+                        params![note_name],
+                        |row| row.get(0),
+                    )
+                    .optional()?
+            } else {
+                None
+            };
+
+            self.conn.execute(
+                r#"
+                INSERT INTO inline_properties 
+                    (note_id, property_key, property_type, value_text, value_number, value_bool,
+                     line_number, char_start, char_end, linked_note_id, group_id, created_at, updated_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                "#,
+                params![
+                    note_id,
+                    prop.key,
+                    prop.value.type_name(),
+                    value_text,
+                    value_number,
+                    value_bool,
+                    prop.line_number as i64,
+                    prop.char_start as i64,
+                    prop.char_end as i64,
+                    linked_note_id,
+                    prop.group_id.map(|g| g as i64),
+                    now,
+                    now,
+                ],
+            )?;
+        }
+
+        Ok(())
+    }
+
+    /// Obtener todas las propiedades inline de una nota
+    pub fn get_inline_properties(&self, note_id: i64) -> Result<Vec<InlinePropertyRow>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT id, property_key, property_type, value_text, value_number, value_bool,
+                   line_number, char_start, char_end, linked_note_id, group_id
+            FROM inline_properties
+            WHERE note_id = ?1
+            ORDER BY line_number, char_start
+            "#,
+        )?;
+
+        let rows = stmt.query_map(params![note_id], |row| {
+            Ok(InlinePropertyRow {
+                id: row.get(0)?,
+                key: row.get(1)?,
+                property_type: row.get(2)?,
+                value_text: row.get(3)?,
+                value_number: row.get(4)?,
+                value_bool: row.get(5)?,
+                line_number: row.get(6)?,
+                char_start: row.get(7)?,
+                char_end: row.get(8)?,
+                linked_note_id: row.get(9)?,
+                group_id: row.get(10)?,
+            })
+        })?;
+
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| e.into())
+    }
+
+    /// Obtener notas que tienen una propiedad específica
+    pub fn get_notes_with_property(&self, property_key: &str) -> Result<Vec<(i64, String)>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT DISTINCT n.id, n.name
+            FROM notes n
+            INNER JOIN inline_properties ip ON n.id = ip.note_id
+            WHERE ip.property_key = ?1
+            ORDER BY n.name
+            "#,
+        )?;
+
+        let rows = stmt.query_map(params![property_key], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })?;
+
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| e.into())
+    }
+
+    /// Obtener todos los nombres de propiedades únicos
+    pub fn get_all_property_keys(&self) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT property_key FROM inline_properties ORDER BY property_key",
+        )?;
+
+        let rows = stmt.query_map([], |row| row.get(0))?;
+
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| e.into())
+    }
+
+    /// Obtener notas que enlazan a una nota específica
+    pub fn get_notes_linking_to(&self, note_id: i64) -> Result<Vec<(i64, String)>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT DISTINCT n.id, n.name
+            FROM notes n
+            INNER JOIN inline_properties ip ON n.id = ip.note_id
+            WHERE ip.linked_note_id = ?1
+            ORDER BY n.name
+            "#,
+        )?;
+
+        let rows = stmt.query_map(params![note_id], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })?;
+
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| e.into())
+    }
+
+    /// Obtener valores distintos de una propiedad (para autocompletado)
+    pub fn get_distinct_values(&self, property_key: &str) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT DISTINCT value_text 
+            FROM inline_properties 
+            WHERE property_key = ?1 AND value_text IS NOT NULL
+            ORDER BY value_text
+            "#,
+        )?;
+
+        let rows = stmt.query_map(params![property_key], |row| row.get(0))?;
+
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| e.into())
+    }
+
+    /// Obtener registros agrupados que contienen un valor específico en cualquier campo
+    /// Ejemplo: buscar "Cervantes" en cualquier campo devuelve todos los registros
+    /// donde aparece ese valor junto con los demás campos del grupo
+    pub fn get_grouped_records_by_value(
+        &self,
+        search_key: &str,
+        search_value: &str,
+    ) -> Result<Vec<GroupedRecord>> {
+        // Buscar todos los grupos que contienen el valor buscado
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT DISTINCT ip1.note_id, ip1.group_id, n.name as note_name
+            FROM inline_properties ip1
+            JOIN notes n ON ip1.note_id = n.id
+            WHERE ip1.property_key = ?1 
+              AND ip1.value_text = ?2
+              AND ip1.group_id IS NOT NULL
+            ORDER BY n.name
+            "#,
+        )?;
+
+        let groups: Vec<(i64, i64, String)> = stmt
+            .query_map(params![search_key, search_value], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        // Para cada grupo encontrado, obtener todas las propiedades del grupo
+        let mut records = Vec::new();
+        for (note_id, group_id, note_name) in groups {
+            let props = self.get_group_properties(note_id, group_id)?;
+            records.push(GroupedRecord {
+                note_id,
+                note_name,
+                group_id,
+                properties: props,
+            });
+        }
+
+        Ok(records)
+    }
+
+    /// Obtener todas las propiedades de un grupo específico
+    fn get_group_properties(
+        &self,
+        note_id: i64,
+        group_id: i64,
+    ) -> Result<Vec<(String, String)>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT property_key, COALESCE(value_text, CAST(value_number AS TEXT), 
+                   CASE value_bool WHEN 1 THEN 'true' ELSE 'false' END, '')
+            FROM inline_properties
+            WHERE note_id = ?1 AND group_id = ?2
+            ORDER BY char_start
+            "#,
+        )?;
+
+        let rows = stmt.query_map(params![note_id, group_id], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })?;
+
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| e.into())
+    }
+
+    /// Obtener todos los registros agrupados de todas las notas
+    /// Útil para construir vistas de Base con relaciones
+    /// Excluye notas de .history y .trash
+    pub fn get_all_grouped_records(&self) -> Result<Vec<GroupedRecord>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT DISTINCT ip.note_id, ip.group_id, n.name as note_name
+            FROM inline_properties ip
+            JOIN notes n ON ip.note_id = n.id
+            WHERE ip.group_id IS NOT NULL
+              AND (n.folder IS NULL OR (n.folder NOT LIKE '.history%' AND n.folder NOT LIKE '.trash%'))
+              AND n.name NOT LIKE '.history/%' AND n.name NOT LIKE '.trash/%'
+            ORDER BY n.name, ip.group_id
+            "#,
+        )?;
+
+        let groups: Vec<(i64, i64, String)> = stmt
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        let mut records = Vec::new();
+        for (note_id, group_id, note_name) in groups {
+            let props = self.get_group_properties(note_id, group_id)?;
+            records.push(GroupedRecord {
+                note_id,
+                note_name,
+                group_id,
+                properties: props,
+            });
+        }
+
+        Ok(records)
     }
 
     /// Actualizar una nota existente
@@ -725,6 +1233,9 @@ impl NotesDatabase {
             "UPDATE notes_fts SET content = ?1 WHERE rowid = ?2",
             params![content, note_id],
         )?;
+
+        // Sincronizar propiedades inline
+        self.sync_inline_properties(note_id, content)?;
 
         Ok(())
     }
@@ -848,16 +1359,24 @@ impl NotesDatabase {
     }
 
     /// Listar todas las notas, opcionalmente filtradas por carpeta
+    /// Excluye notas de .history y .trash
     pub fn list_notes(&self, folder: Option<&str>) -> Result<Vec<NoteMetadata>> {
         let mut stmt = if folder.is_some() {
             self.conn.prepare(
                 "SELECT id, name, path, folder, order_index, icon, created_at, updated_at
-                 FROM notes WHERE folder = ?1 ORDER BY order_index, name",
+                 FROM notes 
+                 WHERE folder = ?1 
+                   AND (folder IS NULL OR (folder NOT LIKE '.history%' AND folder NOT LIKE '.trash%'))
+                   AND name NOT LIKE '.history/%' AND name NOT LIKE '.trash/%'
+                 ORDER BY order_index, name",
             )?
         } else {
             self.conn.prepare(
                 "SELECT id, name, path, folder, order_index, icon, created_at, updated_at
-                 FROM notes ORDER BY order_index, name",
+                 FROM notes 
+                 WHERE (folder IS NULL OR (folder NOT LIKE '.history%' AND folder NOT LIKE '.trash%'))
+                   AND name NOT LIKE '.history/%' AND name NOT LIKE '.trash/%'
+                 ORDER BY order_index, name",
             )?
         };
 
@@ -1997,6 +2516,19 @@ impl NotesDatabase {
         Ok(folders)
     }
 
+    /// Obtener lista de todas las carpetas (nombres únicos) desde las notas
+    pub fn get_all_folders(&self) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT folder FROM notes WHERE folder IS NOT NULL AND folder != '' ORDER BY folder"
+        )?;
+
+        let folders = stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<SqliteResult<Vec<String>>>()?;
+
+        Ok(folders)
+    }
+
     /// Obtener un mapa rápido de path -> icono para todas las carpetas
     pub fn get_all_folder_icons(&self) -> Result<std::collections::HashMap<String, String>> {
         let mut stmt = self
@@ -2102,6 +2634,261 @@ impl NotesDatabase {
             .collect::<SqliteResult<std::collections::HashMap<_, _>>>()?;
 
         Ok(icons)
+    }
+
+    // ==================== FUNCIONES DE PROPIEDADES ====================
+
+    /// Guardar/actualizar una propiedad de una nota
+    pub fn set_note_property(
+        &self,
+        note_id: i64,
+        key: &str,
+        prop_type: &str,
+        value_text: Option<&str>,
+        value_number: Option<f64>,
+        value_bool: Option<bool>,
+    ) -> Result<()> {
+        let now = Utc::now().timestamp();
+
+        self.conn.execute(
+            r#"
+            INSERT INTO note_properties (note_id, property_key, property_type, value_text, value_number, value_bool, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            ON CONFLICT(note_id, property_key) DO UPDATE SET
+                property_type = excluded.property_type,
+                value_text = excluded.value_text,
+                value_number = excluded.value_number,
+                value_bool = excluded.value_bool,
+                updated_at = excluded.updated_at
+            "#,
+            params![note_id, key, prop_type, value_text, value_number, value_bool.map(|b| if b { 1 } else { 0 }), now, now],
+        )?;
+
+        Ok(())
+    }
+
+    /// Obtener todas las propiedades de una nota
+    pub fn get_note_properties(&self, note_id: i64) -> Result<Vec<(String, String, Option<String>, Option<f64>, Option<bool>)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT property_key, property_type, value_text, value_number, value_bool FROM note_properties WHERE note_id = ?1"
+        )?;
+
+        let props = stmt
+            .query_map(params![note_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<f64>>(3)?,
+                    row.get::<_, Option<i64>>(4)?.map(|v| v != 0),
+                ))
+            })?
+            .collect::<SqliteResult<Vec<_>>>()?;
+
+        Ok(props)
+    }
+
+    /// Eliminar una propiedad de una nota
+    pub fn delete_note_property(&self, note_id: i64, key: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM note_properties WHERE note_id = ?1 AND property_key = ?2",
+            params![note_id, key],
+        )?;
+        Ok(())
+    }
+
+    /// Eliminar todas las propiedades de una nota
+    pub fn delete_all_note_properties(&self, note_id: i64) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM note_properties WHERE note_id = ?1",
+            params![note_id],
+        )?;
+        Ok(())
+    }
+
+    // ==================== FUNCIONES DE BASES ====================
+
+    /// Crear una nueva Base
+    pub fn create_base(&self, name: &str, description: Option<&str>, source_folder: Option<&str>, config_yaml: &str) -> Result<i64> {
+        let now = Utc::now().timestamp();
+
+        self.conn.execute(
+            r#"
+            INSERT INTO bases (name, description, source_folder, config_yaml, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+            params![name, description, source_folder, config_yaml, now, now],
+        )?;
+
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Actualizar una Base existente
+    pub fn update_base(&self, id: i64, config_yaml: &str, active_view: i32) -> Result<()> {
+        let now = Utc::now().timestamp();
+
+        self.conn.execute(
+            "UPDATE bases SET config_yaml = ?1, active_view = ?2, updated_at = ?3 WHERE id = ?4",
+            params![config_yaml, active_view, now, id],
+        )?;
+
+        Ok(())
+    }
+
+    /// Obtener una Base por ID
+    pub fn get_base(&self, id: i64) -> Result<Option<(i64, String, Option<String>, Option<String>, String, i32)>> {
+        let result = self
+            .conn
+            .query_row(
+                "SELECT id, name, description, source_folder, config_yaml, active_view FROM bases WHERE id = ?1",
+                params![id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
+            )
+            .optional()?;
+
+        Ok(result)
+    }
+
+    /// Obtener una Base por nombre
+    pub fn get_base_by_name(&self, name: &str) -> Result<Option<(i64, String, Option<String>, Option<String>, String, i32)>> {
+        let result = self
+            .conn
+            .query_row(
+                "SELECT id, name, description, source_folder, config_yaml, active_view FROM bases WHERE name = ?1",
+                params![name],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
+            )
+            .optional()?;
+
+        Ok(result)
+    }
+
+    /// Listar todas las Bases
+    pub fn list_bases(&self) -> Result<Vec<(i64, String, Option<String>, Option<String>)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, name, description, source_folder FROM bases ORDER BY name"
+        )?;
+
+        let bases = stmt
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })?
+            .collect::<SqliteResult<Vec<_>>>()?;
+
+        Ok(bases)
+    }
+
+    /// Eliminar una Base
+    pub fn delete_base(&self, id: i64) -> Result<()> {
+        self.conn.execute("DELETE FROM bases WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    /// Buscar notas que tengan una propiedad con un valor específico
+    pub fn find_notes_by_property(&self, key: &str, value: &str) -> Result<Vec<i64>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT note_id FROM note_properties WHERE property_key = ?1 AND value_text = ?2"
+        )?;
+
+        let ids = stmt
+            .query_map(params![key, value], |row| row.get(0))?
+            .collect::<SqliteResult<Vec<_>>>()?;
+
+        Ok(ids)
+    }
+
+    /// Buscar notas que tengan una propiedad numérica en un rango
+    pub fn find_notes_by_property_range(&self, key: &str, min: f64, max: f64) -> Result<Vec<i64>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT note_id FROM note_properties WHERE property_key = ?1 AND value_number >= ?2 AND value_number <= ?3"
+        )?;
+
+        let ids = stmt
+            .query_map(params![key, min, max], |row| row.get(0))?
+            .collect::<SqliteResult<Vec<_>>>()?;
+
+        Ok(ids)
+    }
+
+    /// Obtener todas las notas de una carpeta (para una Base) con sus propiedades
+    /// Retorna: Vec<(note_id, note_name, note_path, properties_map)>
+    pub fn get_notes_for_base(&self, source_folder: Option<&str>) -> Result<Vec<(i64, String, String, std::collections::HashMap<String, String>)>> {
+        // Primero obtener las notas según el source_folder
+        let notes: Vec<(i64, String, String)> = if let Some(folder) = source_folder {
+            let mut stmt = self.conn.prepare(
+                "SELECT id, name, path FROM notes WHERE folder = ?1 OR folder LIKE ?2 ORDER BY name"
+            )?;
+            let pattern = format!("{}/%", folder);
+            stmt.query_map(params![folder, pattern], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?.collect::<SqliteResult<Vec<_>>>()?
+        } else {
+            // Si no hay source_folder, obtener todas las notas
+            let mut stmt = self.conn.prepare(
+                "SELECT id, name, path FROM notes ORDER BY name"
+            )?;
+            stmt.query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?.collect::<SqliteResult<Vec<_>>>()?
+        };
+
+        // Para cada nota, obtener sus propiedades
+        let mut result = Vec::new();
+        for (note_id, note_name, note_path) in notes {
+            let props = self.get_note_properties(note_id)?;
+            let mut props_map = std::collections::HashMap::new();
+            
+            for (key, prop_type, value_text, value_number, value_bool) in props {
+                let display_value = match prop_type.as_str() {
+                    "text" | "select" | "multi_select" | "url" | "email" | "phone" => {
+                        value_text.unwrap_or_default()
+                    }
+                    "number" => {
+                        value_number.map(|n| n.to_string()).unwrap_or_default()
+                    }
+                    "checkbox" => {
+                        if value_bool.unwrap_or(false) { "✓".to_string() } else { "✗".to_string() }
+                    }
+                    "date" => {
+                        value_text.unwrap_or_default()
+                    }
+                    _ => value_text.unwrap_or_default()
+                };
+                props_map.insert(key, display_value);
+            }
+            
+            result.push((note_id, note_name, note_path, props_map));
+        }
+
+        Ok(result)
+    }
+
+    /// Obtener todas las claves de propiedades usadas en notas de una carpeta
+    pub fn get_property_keys_for_folder(&self, source_folder: Option<&str>) -> Result<Vec<(String, String)>> {
+        let keys: Vec<(String, String)> = if let Some(folder) = source_folder {
+            let pattern = format!("{}/%", folder);
+            let mut stmt = self.conn.prepare(
+                r#"
+                SELECT DISTINCT np.property_key, np.property_type 
+                FROM note_properties np
+                JOIN notes n ON np.note_id = n.id
+                WHERE n.folder = ?1 OR n.folder LIKE ?2
+                ORDER BY np.property_key
+                "#
+            )?;
+            stmt.query_map(params![folder, pattern], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })?.collect::<SqliteResult<Vec<_>>>()?
+        } else {
+            let mut stmt = self.conn.prepare(
+                "SELECT DISTINCT property_key, property_type FROM note_properties ORDER BY property_key"
+            )?;
+            stmt.query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })?.collect::<SqliteResult<Vec<_>>>()?
+        };
+
+        Ok(keys)
     }
 }
 
