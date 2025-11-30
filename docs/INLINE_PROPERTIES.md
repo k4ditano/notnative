@@ -6,14 +6,25 @@ NotNative soporta un sistema de propiedades inline que te permite añadir metada
 
 ## Sintaxis
 
-### Propiedad Individual
+### Propiedad Individual (Visible)
 ```
 [campo::valor]
 ```
 
+### Propiedad Individual (Oculta)
+```
+[campo:::valor]
+```
+Las propiedades con `:::` (triple dos puntos) se indexan pero **no se renderizan** en la vista. Útil para metadatos internos.
+
 ### Propiedades Agrupadas (Registros)
 ```
 [campo1::valor1, campo2::valor2, campo3::valor3]
+```
+
+### Propiedades Mixtas (Visible + Oculta)
+```
+[titulo::Mi Libro, id:::12345]
 ```
 
 Las propiedades agrupadas forman un "registro" relacionado. Esto es útil para representar relaciones complejas como autor-libro-año.

@@ -1256,69 +1256,54 @@ impl SimpleComponent for MainApp {
             notes_config: &Rc<RefCell<NotesConfig>>,
             version: &str,
         ) {
-            let whats_new_content = format!(r#"# 🆕 Novedades en NotNative v{}
+            let whats_new_content = format!(r#"# 🆕 What's New in NotNative v{}
 
-¡Gracias por actualizar! Aquí tienes las nuevas funcionalidades:
-
----
-
-## 🗃️ Bases de Datos Inline
-
-Ahora puedes crear **bases de datos directamente en tus notas**:
-
-```
-:::database{{name="Mi Base de Datos" columns="nombre,estado,fecha"}}
-```
-
-### Características:
-- ✅ Añadir, editar y eliminar filas
-- 🔍 Filtrar datos con múltiples condiciones
-- ↕️ Ordenar por cualquier columna
-- 👁️ Mostrar/ocultar columnas
-- 🔎 Búsqueda rápida en tabla
+Thanks for updating! Here are the new features:
 
 ---
 
-## 🔗 Propiedades Inline Mejoradas
+## 🗃️ Database Section
 
-Las propiedades al estilo Notion ahora son más potentes:
-
-```yaml
----
-status:: completado
-priority:: alta
-tags:: #proyecto, #importante
-due:: 2024-12-31
----
-```
+New dedicated section in the sidebar to manage databases:
+- ✅ Create and manage multiple databases
+- 🔍 Filter data with multiple conditions
+- ↕️ Sort by any column
+- 👁️ Show/hide columns
+- 🔎 Quick in-table search
 
 ---
 
-## 🌐 Traducciones Dinámicas
+## 🔗 Inline Properties
 
-- Cambio de idioma **en tiempo real** (sin reiniciar)
-- Interfaz completamente en Español e Inglés
+Add metadata directly in your notes:
 
----
+**Visible property:**
+`[status::in progress]`
 
-## 🤖 Mejoras en Chat IA
+**Hidden property (indexed but not rendered):**
+`[status:::draft]`
 
-- Nuevo sistema MCP para herramientas
-- Mejor integración con el contexto de notas
-
----
-
-## 📋 Otras mejoras
-
-- Mejor rendimiento general
-- Correcciones de errores
-- UI más pulida
+**Grouped properties (records):**
+`[author::Cervantes, book::Don Quijote, year::1605]`
 
 ---
 
-¡Disfruta de las nuevas funcionalidades! 🚀
+## 🌐 Dynamic Language Switching
 
-*Para ver los atajos de teclado, consulta @NotNative_Atajos_de_Teclado*
+- Switch between Spanish and English **without restart**
+- Database UI also updates dynamically
+
+---
+
+## 📊 Graph View
+
+- Visualize connections between your notes
+
+---
+
+Enjoy the new features! 🚀
+
+*For keyboard shortcuts, check @NotNative_Atajos_de_Teclado*
 "#, version);
 
             // Crear en carpeta Notnative
@@ -1451,71 +1436,60 @@ due:: 2024-12-31
                     // Solo crear la nota de bienvenida si es primera vez (ninguna otra nota existe)
                     match notes_dir.list_notes() {
                         Ok(notes) if notes.is_empty() => {
-                            // Primera vez usando la app
-                            let welcome_content = r#"# 🚀 Bienvenido a NotNative
+                            // First time using the app
+                            let welcome_content = r#"# 🚀 Welcome to NotNative
 
-Esta es tu primera nota. NotNative guarda cada nota como un archivo `.md` independiente.
+This is your first note. NotNative saves each note as an independent `.md` file.
 
-## ⌨️ Comandos básicos
+## ⌨️ Basic Commands
 
-| Comando | Acción |
+| Command | Action |
 |---------|--------|
-| `i` | Modo INSERT (editar) |
-| `Esc` | Modo NORMAL |
-| `h/j/k/l` | Navegar (izquierda/abajo/arriba/derecha) |
-| `x` | Eliminar carácter |
-| `u` | Deshacer |
-| `Ctrl+S` | Guardar |
+| `i` | INSERT mode (edit) |
+| `Esc` | NORMAL mode |
+| `h/j/k/l` | Navigate (left/down/up/right) |
+| `x` | Delete character |
+| `u` | Undo |
+| `Ctrl+S` | Save |
 
-Las notas se guardan en: `~/.local/share/notnative/notes/`
-
----
-
-## 🗃️ Bases de Datos Inline
-
-Puedes crear **bases de datos directamente en tus notas** con una sintaxis simple:
-
-```
-:::database{name="Tareas" columns="titulo,estado,prioridad"}
-```
-
-Esto renderiza una tabla interactiva donde puedes:
-- ✅ Añadir, editar y eliminar filas
-- 🔍 Filtrar y ordenar datos
-- 📊 Gestionar columnas visibles
+Notes are saved in: `~/.local/share/notnative/notes/`
 
 ---
 
-## 🔗 Propiedades Inline
+## 🗃️ Databases
 
-Añade metadatos a tus notas con propiedades al estilo Notion:
+In the sidebar you'll find a **Databases** section where you can:
+- ✅ Create and manage multiple databases
+- 🔍 Filter and sort data
+- 📊 Manage visible columns
 
-```
 ---
-status:: en progreso
-priority:: alta  
-tags:: #proyecto, #trabajo
-due:: 2024-12-01
----
-```
 
-Estas propiedades se pueden usar para filtrar y organizar tus notas.
+## 🔗 Inline Properties
+
+Add metadata to your notes with this syntax:
+
+**Visible property:** `[status::in progress]`
+
+**Hidden property:** `[id:::12345]`
+
+**Grouped properties:** `[author::Cervantes, book::Don Quijote]`
 
 ---
 
 ## 📝 Quick Notes
 
-Abre una ventana flotante de notas rápidas desde **cualquier aplicación** (incluso juegos fullscreen).
+Open a floating quick notes window from **any application** (even fullscreen games).
 
-👉 **Lee la nota @NotNative_Atajos_de_Teclado para configurar los atajos globales.**
+👉 **Read the @NotNative_Atajos_de_Teclado note to configure global shortcuts.**
 
 ---
 
-## 🤖 Chat con IA
+## 🤖 AI Chat
 
-NotNative incluye integración con modelos de IA para ayudarte con tus notas.
+NotNative includes integration with AI models to help you with your notes.
 
-¡Disfruta tomando notas! 📓
+Enjoy taking notes! 📓
 "#;
                             // Crear nota de bienvenida
                             let result = match notes_dir.create_note("bienvenida", welcome_content)
