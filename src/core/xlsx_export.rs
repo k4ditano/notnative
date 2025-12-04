@@ -3,10 +3,12 @@
 //! Este módulo permite exportar las tablas de Base a archivos Excel (.xlsx)
 //! preservando las fórmulas para que funcionen directamente en Excel.
 
-use rust_xlsxwriter::{Color, Format, FormatAlign, FormatBorder, Formula, Workbook, Worksheet, XlsxError};
+use rust_xlsxwriter::{
+    Color, Format, FormatAlign, FormatBorder, Formula, Workbook, Worksheet, XlsxError,
+};
 use std::path::Path;
 
-use super::base::{CellFormat, SpecialCellContent, SpecialRow, ColumnConfig};
+use super::base::{CellFormat, ColumnConfig, SpecialCellContent, SpecialRow};
 use super::base_query::NoteWithProperties;
 use super::formula::col_to_letters;
 
@@ -30,8 +32,7 @@ pub fn export_to_xlsx(
         .set_font_color(Color::RGB(0xCDD6F4))
         .set_border(FormatBorder::Thin);
 
-    let cell_format = Format::new()
-        .set_border(FormatBorder::Thin);
+    let cell_format = Format::new().set_border(FormatBorder::Thin);
 
     let special_row_format = Format::new()
         .set_bold()
@@ -46,7 +47,7 @@ pub fn export_to_xlsx(
     for (col_idx, col) in visible_columns.iter().enumerate() {
         let header = col.title.as_ref().unwrap_or(&col.property);
         worksheet.write_with_format(0, col_idx as u16, header, &header_format)?;
-        
+
         // Ajustar ancho de columna
         let width = col.width.unwrap_or(120) as f64 / 8.0;
         worksheet.set_column_width(col_idx as u16, width)?;
@@ -76,7 +77,12 @@ pub fn export_to_xlsx(
         let excel_row = special_start_row + special_idx as u32;
 
         // Primera columna: label
-        worksheet.write_string_with_format(excel_row, 0, &special_row.label, &special_row_format)?;
+        worksheet.write_string_with_format(
+            excel_row,
+            0,
+            &special_row.label,
+            &special_row_format,
+        )?;
 
         // Resto de columnas
         for (col_idx, col) in visible_columns.iter().enumerate().skip(1) {
@@ -87,10 +93,21 @@ pub fn export_to_xlsx(
 
                 if cell_content.is_formula() {
                     // Convertir fórmula a formato Excel
-                    let excel_formula = convert_formula_for_excel(&cell_content.content, notes.len());
-                    worksheet.write_formula_with_format(excel_row, excel_col, Formula::new(&excel_formula), &format)?;
+                    let excel_formula =
+                        convert_formula_for_excel(&cell_content.content, notes.len());
+                    worksheet.write_formula_with_format(
+                        excel_row,
+                        excel_col,
+                        Formula::new(&excel_formula),
+                        &format,
+                    )?;
                 } else {
-                    worksheet.write_string_with_format(excel_row, excel_col, &cell_content.content, &format)?;
+                    worksheet.write_string_with_format(
+                        excel_row,
+                        excel_col,
+                        &cell_content.content,
+                        &format,
+                    )?;
                 }
             }
         }
@@ -105,8 +122,16 @@ pub fn export_to_xlsx(
 fn get_property_value(note: &NoteWithProperties, property: &str) -> String {
     match property {
         "title" => note.metadata.name.clone(),
-        "created" => note.metadata.created_at.format("%Y-%m-%d %H:%M").to_string(),
-        "modified" => note.metadata.updated_at.format("%Y-%m-%d %H:%M").to_string(),
+        "created" => note
+            .metadata
+            .created_at
+            .format("%Y-%m-%d %H:%M")
+            .to_string(),
+        "modified" => note
+            .metadata
+            .updated_at
+            .format("%Y-%m-%d %H:%M")
+            .to_string(),
         other => note
             .properties
             .get(other)
@@ -165,7 +190,7 @@ fn create_cell_format(cell_format: &CellFormat, base_format: &Format) -> Format 
             2 => "#,##0.00",
             _ => "#,##0.00",
         };
-        
+
         // Añadir prefijo/sufijo si existen
         let mut full_format = String::new();
         if let Some(ref prefix) = cell_format.prefix {
@@ -175,7 +200,7 @@ fn create_cell_format(cell_format: &CellFormat, base_format: &Format) -> Format 
         if let Some(ref suffix) = cell_format.suffix {
             full_format.push_str(&format!("\"{}\"", suffix));
         }
-        
+
         format = format.set_num_format(&full_format);
     }
 
@@ -219,10 +244,7 @@ mod tests {
 
     #[test]
     fn test_convert_formula() {
-        assert_eq!(
-            convert_formula_for_excel("=SUM(B:B)", 10),
-            "=SUM(B2:B11)"
-        );
+        assert_eq!(convert_formula_for_excel("=SUM(B:B)", 10), "=SUM(B2:B11)");
         assert_eq!(
             convert_formula_for_excel("=AVG(C1:C10)", 10),
             "=AVG(C1:C10)" // No cambia rangos explícitos

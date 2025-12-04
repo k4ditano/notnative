@@ -17,16 +17,19 @@ pub mod property;
 pub mod text_chunker;
 pub mod xlsx_export;
 
-pub use base::{Base, BaseView, ColumnConfig, Filter, FilterGroup, FilterOperator, SortConfig, SortDirection, SourceType, ViewType, CellFormat, SpecialCellContent, SpecialRow};
+pub use base::{
+    Base, BaseView, CellFormat, ColumnConfig, Filter, FilterGroup, FilterOperator, SortConfig,
+    SortDirection, SourceType, SpecialCellContent, SpecialRow, ViewType,
+};
 pub use base_query::{BaseQueryEngine, NoteWithProperties, PropertyAggregation};
 pub use base_writer::BaseWriter;
 pub use command::{CommandParser, EditorAction, KeyModifiers};
-pub use database::{NotesDatabase, NoteMetadata, SearchResult, InlinePropertyRow, GroupedRecord};
+pub use database::{GroupedRecord, InlinePropertyRow, NoteMetadata, NotesDatabase, SearchResult};
 pub use editor_mode::EditorMode;
 pub use embedding_config::{EmbeddingConfig, IndexStats};
-pub use formula::{CellRef, CellRange, CellGrid, CellValue, FormulaError};
+pub use formula::{CellGrid, CellRange, CellRef, CellValue, FormulaError};
 pub use frontmatter::{extract_all_tags, extract_inline_tags, extract_tags};
-pub use html_renderer::{HtmlRenderer, PreviewTheme, PreviewColors};
+pub use html_renderer::{HtmlRenderer, PreviewColors, PreviewTheme};
 pub use inline_property::{InlineProperty, InlinePropertyParser};
 pub use markdown::{MarkdownParser, StyleType};
 pub use note_buffer::NoteBuffer;

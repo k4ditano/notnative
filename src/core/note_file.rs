@@ -111,12 +111,13 @@ impl NoteFile {
 
         // Calcular la ruta relativa completa desde notes_dir
         // Ej: /home/user/notes/Proyectos/Joyeria/idea.md -> Proyectos_Joyeria_idea
-        let relative_name = self.path
+        let relative_name = self
+            .path
             .strip_prefix(notes_dir.root())
             .ok()
             .and_then(|p| p.with_extension("").to_str().map(|s| s.to_string()))
             .unwrap_or_else(|| self.name.clone());
-        
+
         let safe_name = relative_name.replace('/', "_");
         let trash_filename = format!("{}_{}.md", safe_name, timestamp);
         let dest_path = trash_path.join(trash_filename);
@@ -143,12 +144,13 @@ impl NoteFile {
 
         // Calcular la ruta relativa completa desde notes_dir
         // Ej: /home/user/notes/Proyectos/Joyeria/idea.md -> Proyectos/Joyeria/idea
-        let relative_name = self.path
+        let relative_name = self
+            .path
             .strip_prefix(notes_dir.root())
             .ok()
             .and_then(|p| p.with_extension("").to_str().map(|s| s.to_string()))
             .unwrap_or_else(|| self.name.clone());
-        
+
         let safe_name = relative_name.replace('/', "_");
         let backup_filename = format!("{}_{}.md", safe_name, timestamp);
         let dest_path = history_path.join(backup_filename);

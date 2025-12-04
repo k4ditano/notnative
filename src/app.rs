@@ -8,14 +8,14 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::LazyLock;
 
+use crate::base_ui::{BaseTableWidget, GtkThemeColors};
 use crate::core::{
-    CommandParser, EditorAction, EditorMode, HtmlRenderer, KeyModifiers, MarkdownParser,
-    NoteBuffer, NoteFile, NotesConfig, NotesDatabase, NotesDirectory, PreviewTheme, PreviewColors, SearchResult,
-    StyleType, extract_all_tags, Base, InlinePropertyParser, BaseWriter,
+    Base, BaseWriter, CommandParser, EditorAction, EditorMode, HtmlRenderer, InlinePropertyParser,
+    KeyModifiers, MarkdownParser, NoteBuffer, NoteFile, NotesConfig, NotesDatabase, NotesDirectory,
+    PreviewColors, PreviewTheme, SearchResult, StyleType, extract_all_tags,
 };
 use crate::i18n::{I18n, Language};
 use crate::mcp::{MCPToolCall, MCPToolResult};
-use crate::base_ui::{BaseTableWidget, GtkThemeColors};
 
 use crate::ai::memory::NoteMemory;
 use std::sync::Arc;
@@ -30,9 +30,8 @@ static YOUTUBE_WATCH_ID_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// Regex para extraer video ID de youtu.be URLs
-static YOUTUBE_SHORT_ID_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"youtu\.be/([a-zA-Z0-9_-]{11})").unwrap()
-});
+static YOUTUBE_SHORT_ID_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"youtu\.be/([a-zA-Z0-9_-]{11})").unwrap());
 
 /// Regex para extraer video ID de YouTube Shorts URLs  
 static YOUTUBE_SHORTS_ID_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -40,14 +39,11 @@ static YOUTUBE_SHORTS_ID_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// Regex para links internos [[Nombre]]
-static WIKI_LINK_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\[\[([^\]]+)\]\]").unwrap()
-});
+static WIKI_LINK_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[([^\]]+)\]\]").unwrap());
 
 /// Regex para links markdown [texto](url)
-static MD_LINK_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\[([^\]]+)\]\(([^)]+)\)").unwrap()
-});
+static MD_LINK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[([^\]]+)\]\(([^)]+)\)").unwrap());
 
 #[derive(Debug, Clone)]
 struct ThemeColors {
@@ -153,7 +149,7 @@ pub enum MarkdownFormat {
     Checkbox,       // - [ ] tarea - inserta al inicio de línea
     Table,          // | col1 | col2 | - inserta tabla
     Heading1,       // # - inserta al inicio de línea
-    Heading2,       // ## - inserta al inicio de línea  
+    Heading2,       // ## - inserta al inicio de línea
     Heading3,       // ### - inserta al inicio de línea
     Quote,          // > - inserta al inicio de línea
     HorizontalRule, // --- - inserta línea horizontal
@@ -373,7 +369,10 @@ pub enum AppMsg {
     CreateNewBase,
     LoadBase(String),
     DeleteBase(String),
-    RenameBase { id: i64, new_name: String },
+    RenameBase {
+        id: i64,
+        new_name: String,
+    },
     ShowBaseContextMenu(f64, f64, i64, String), // x, y, base_id, base_name
     CloseBaseView,
     ShowCreateNoteDialog,
@@ -597,14 +596,14 @@ pub enum AppMsg {
         icon: Option<String>,
         color: Option<String>,
     }, // Establecer icono de carpeta
-    
+
     // === Mensajes de Historial de Notas ===
     ShowNoteHistory(String), // Mostrar historial de una nota (nombre de la nota)
     RestoreNoteVersion {
         note_name: String,
         history_path: String,
     }, // Restaurar versión específica del historial
-    
+
     // === Mensajes de la Barra de Formato ===
     InsertMarkdownFormat(MarkdownFormat), // Insertar formato markdown en el texto
     ToggleFormatToolbar(bool),            // Mostrar/ocultar barra de formato
@@ -1131,7 +1130,7 @@ impl SimpleComponent for MainApp {
         editor_container.set_width_request(900);
         editor_container.set_hexpand(false);
         editor_container.set_vexpand(true);
-        
+
         // === Crear Toolbar de Formato para modo INSERT ===
         let format_toolbar = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         format_toolbar.add_css_class("format-toolbar");
@@ -1139,88 +1138,186 @@ impl SimpleComponent for MainApp {
         format_toolbar.set_margin_bottom(8);
         format_toolbar.set_halign(gtk::Align::Center); // Centrado horizontalmente
         format_toolbar.set_visible(false); // Oculto por defecto, se muestra en modo INSERT
-        
+
         // Helper para crear botones de formato con icono
-        let create_format_button = |icon: &str, tooltip: &str, format: MarkdownFormat, sender: &ComponentSender<MainApp>| {
-            let btn = gtk::Button::new();
-            btn.set_icon_name(icon);
-            btn.set_tooltip_text(Some(tooltip));
-            btn.add_css_class("format-btn");
-            btn.add_css_class("flat");
-            let sender_clone = sender.clone();
-            btn.connect_clicked(move |_| {
-                sender_clone.input(AppMsg::InsertMarkdownFormat(format));
-            });
-            btn
-        };
-        
+        let create_format_button =
+            |icon: &str,
+             tooltip: &str,
+             format: MarkdownFormat,
+             sender: &ComponentSender<MainApp>| {
+                let btn = gtk::Button::new();
+                btn.set_icon_name(icon);
+                btn.set_tooltip_text(Some(tooltip));
+                btn.add_css_class("format-btn");
+                btn.add_css_class("flat");
+                let sender_clone = sender.clone();
+                btn.connect_clicked(move |_| {
+                    sender_clone.input(AppMsg::InsertMarkdownFormat(format));
+                });
+                btn
+            };
+
         // Helper para crear botones de heading con texto (H1, H2, H3)
-        let create_heading_button = |label: &str, tooltip: &str, format: MarkdownFormat, sender: &ComponentSender<MainApp>| {
-            let btn = gtk::Button::new();
-            btn.set_label(label);
-            btn.set_tooltip_text(Some(tooltip));
-            btn.add_css_class("format-btn");
-            btn.add_css_class("format-btn-heading");
-            btn.add_css_class("flat");
-            let sender_clone = sender.clone();
-            btn.connect_clicked(move |_| {
-                sender_clone.input(AppMsg::InsertMarkdownFormat(format));
-            });
-            btn
-        };
-        
+        let create_heading_button =
+            |label: &str,
+             tooltip: &str,
+             format: MarkdownFormat,
+             sender: &ComponentSender<MainApp>| {
+                let btn = gtk::Button::new();
+                btn.set_label(label);
+                btn.set_tooltip_text(Some(tooltip));
+                btn.add_css_class("format-btn");
+                btn.add_css_class("format-btn-heading");
+                btn.add_css_class("flat");
+                let sender_clone = sender.clone();
+                btn.connect_clicked(move |_| {
+                    sender_clone.input(AppMsg::InsertMarkdownFormat(format));
+                });
+                btn
+            };
+
         // Botones de formato de texto
-        format_toolbar.append(&create_format_button("format-text-bold-symbolic", "Negrita (Ctrl+B)", MarkdownFormat::Bold, &sender));
-        format_toolbar.append(&create_format_button("format-text-italic-symbolic", "Cursiva (Ctrl+I)", MarkdownFormat::Italic, &sender));
-        format_toolbar.append(&create_format_button("format-text-underline-symbolic", "Subrayado", MarkdownFormat::Underline, &sender));
-        format_toolbar.append(&create_format_button("format-text-strikethrough-symbolic", "Tachado", MarkdownFormat::Strikethrough, &sender));
-        format_toolbar.append(&create_format_button("edit-select-all-symbolic", "Resaltado", MarkdownFormat::Highlight, &sender));
-        
+        format_toolbar.append(&create_format_button(
+            "format-text-bold-symbolic",
+            "Negrita (Ctrl+B)",
+            MarkdownFormat::Bold,
+            &sender,
+        ));
+        format_toolbar.append(&create_format_button(
+            "format-text-italic-symbolic",
+            "Cursiva (Ctrl+I)",
+            MarkdownFormat::Italic,
+            &sender,
+        ));
+        format_toolbar.append(&create_format_button(
+            "format-text-underline-symbolic",
+            "Subrayado",
+            MarkdownFormat::Underline,
+            &sender,
+        ));
+        format_toolbar.append(&create_format_button(
+            "format-text-strikethrough-symbolic",
+            "Tachado",
+            MarkdownFormat::Strikethrough,
+            &sender,
+        ));
+        format_toolbar.append(&create_format_button(
+            "edit-select-all-symbolic",
+            "Resaltado",
+            MarkdownFormat::Highlight,
+            &sender,
+        ));
+
         // Separador
         let sep1 = gtk::Separator::new(gtk::Orientation::Vertical);
         sep1.set_margin_start(4);
         sep1.set_margin_end(4);
         format_toolbar.append(&sep1);
-        
+
         // Botones de código
-        format_toolbar.append(&create_format_button("insert-text-symbolic", "Código inline", MarkdownFormat::InlineCode, &sender));
-        format_toolbar.append(&create_format_button("text-x-generic-symbolic", "Bloque de código", MarkdownFormat::CodeBlock, &sender));
-        
+        format_toolbar.append(&create_format_button(
+            "insert-text-symbolic",
+            "Código inline",
+            MarkdownFormat::InlineCode,
+            &sender,
+        ));
+        format_toolbar.append(&create_format_button(
+            "text-x-generic-symbolic",
+            "Bloque de código",
+            MarkdownFormat::CodeBlock,
+            &sender,
+        ));
+
         // Separador
         let sep2 = gtk::Separator::new(gtk::Orientation::Vertical);
         sep2.set_margin_start(4);
         sep2.set_margin_end(4);
         format_toolbar.append(&sep2);
-        
+
         // Botones de listas
-        format_toolbar.append(&create_format_button("view-list-bullet-symbolic", "Lista", MarkdownFormat::BulletList, &sender));
-        format_toolbar.append(&create_format_button("view-list-ordered-symbolic", "Lista numerada", MarkdownFormat::NumberedList, &sender));
-        format_toolbar.append(&create_format_button("checkbox-checked-symbolic", "Checkbox", MarkdownFormat::Checkbox, &sender));
-        
+        format_toolbar.append(&create_format_button(
+            "view-list-bullet-symbolic",
+            "Lista",
+            MarkdownFormat::BulletList,
+            &sender,
+        ));
+        format_toolbar.append(&create_format_button(
+            "view-list-ordered-symbolic",
+            "Lista numerada",
+            MarkdownFormat::NumberedList,
+            &sender,
+        ));
+        format_toolbar.append(&create_format_button(
+            "checkbox-checked-symbolic",
+            "Checkbox",
+            MarkdownFormat::Checkbox,
+            &sender,
+        ));
+
         // Separador
         let sep3 = gtk::Separator::new(gtk::Orientation::Vertical);
         sep3.set_margin_start(4);
         sep3.set_margin_end(4);
         format_toolbar.append(&sep3);
-        
+
         // Botones de headings - usamos iconos de texto con etiquetas
-        format_toolbar.append(&create_heading_button("H1", "Encabezado 1", MarkdownFormat::Heading1, &sender));
-        format_toolbar.append(&create_heading_button("H2", "Encabezado 2", MarkdownFormat::Heading2, &sender));
-        format_toolbar.append(&create_heading_button("H3", "Encabezado 3", MarkdownFormat::Heading3, &sender));
-        
+        format_toolbar.append(&create_heading_button(
+            "H1",
+            "Encabezado 1",
+            MarkdownFormat::Heading1,
+            &sender,
+        ));
+        format_toolbar.append(&create_heading_button(
+            "H2",
+            "Encabezado 2",
+            MarkdownFormat::Heading2,
+            &sender,
+        ));
+        format_toolbar.append(&create_heading_button(
+            "H3",
+            "Encabezado 3",
+            MarkdownFormat::Heading3,
+            &sender,
+        ));
+
         // Separador
         let sep4 = gtk::Separator::new(gtk::Orientation::Vertical);
         sep4.set_margin_start(4);
         sep4.set_margin_end(4);
         format_toolbar.append(&sep4);
-        
+
         // Otros formatos
-        format_toolbar.append(&create_format_button("insert-link-symbolic", "Enlace", MarkdownFormat::Link, &sender));
-        format_toolbar.append(&create_format_button("format-indent-more-symbolic", "Cita", MarkdownFormat::Quote, &sender));
-        format_toolbar.append(&create_format_button("view-more-horizontal-symbolic", "Línea horizontal", MarkdownFormat::HorizontalRule, &sender));
-        format_toolbar.append(&create_format_button("view-grid-symbolic", "Tabla", MarkdownFormat::Table, &sender));
-        format_toolbar.append(&create_format_button("bookmark-new-symbolic", "Propiedad", MarkdownFormat::Property, &sender));
-        
+        format_toolbar.append(&create_format_button(
+            "insert-link-symbolic",
+            "Enlace",
+            MarkdownFormat::Link,
+            &sender,
+        ));
+        format_toolbar.append(&create_format_button(
+            "format-indent-more-symbolic",
+            "Cita",
+            MarkdownFormat::Quote,
+            &sender,
+        ));
+        format_toolbar.append(&create_format_button(
+            "view-more-horizontal-symbolic",
+            "Línea horizontal",
+            MarkdownFormat::HorizontalRule,
+            &sender,
+        ));
+        format_toolbar.append(&create_format_button(
+            "view-grid-symbolic",
+            "Tabla",
+            MarkdownFormat::Table,
+            &sender,
+        ));
+        format_toolbar.append(&create_format_button(
+            "bookmark-new-symbolic",
+            "Propiedad",
+            MarkdownFormat::Property,
+            &sender,
+        ));
+
         // Añadir solo el text_view al contenedor del editor (toolbar irá fuera del scroll)
         editor_container.append(&text_view_actual);
         editor_center_box.append(&editor_container);
@@ -1243,16 +1340,16 @@ impl SimpleComponent for MainApp {
         editor_scroll.set_vexpand(true);
         editor_scroll.set_policy(gtk::PolicyType::Automatic, gtk::PolicyType::Automatic);
         editor_scroll.set_child(Some(&editor_center_box));
-        
+
         // Crear wrapper para toolbar sticky + scroll
         // El toolbar está fuera del scroll para que quede fijo arriba
         let editor_with_toolbar = gtk::Box::new(gtk::Orientation::Vertical, 0);
         editor_with_toolbar.set_hexpand(true);
         editor_with_toolbar.set_vexpand(true);
-        editor_with_toolbar.set_halign(gtk::Align::Fill);  // Llenar todo el ancho
-        editor_with_toolbar.append(&format_toolbar);  // Toolbar centrado (sticky)
-        editor_with_toolbar.append(&editor_scroll);   // Scroll con el contenido
-        
+        editor_with_toolbar.set_halign(gtk::Align::Fill); // Llenar todo el ancho
+        editor_with_toolbar.append(&format_toolbar); // Toolbar centrado (sticky)
+        editor_with_toolbar.append(&editor_scroll); // Scroll con el contenido
+
         editor_stack.add_named(&editor_with_toolbar, Some("editor"));
 
         // Crear WebView para preview HTML en modo Normal
@@ -1275,7 +1372,7 @@ impl SimpleComponent for MainApp {
             settings.set_enable_webaudio(false);
             settings.set_enable_webgl(false);
         }
-        
+
         // Configurar color de fondo del WebView para evitar flash negro durante transiciones
         // Usar un gris oscuro que coincida con el tema oscuro por defecto
         preview_webview.set_background_color(&gtk::gdk::RGBA::new(0.12, 0.12, 0.12, 1.0));
@@ -1379,14 +1476,14 @@ impl SimpleComponent for MainApp {
         let start_time = std::time::Instant::now();
         let mut indexed_count = 0;
         let mut skipped_count = 0;
-        
+
         if let Ok(notes) = notes_dir.list_notes() {
             // Iniciar transacción para batch de operaciones
             let _ = notes_db.begin_transaction();
-            
+
             for note in &notes {
                 let path_str = note.path().to_str().unwrap_or("");
-                
+
                 // Verificar si necesita re-indexarse (comparar mtime)
                 let needs_reindex = if let Ok(metadata) = note.path().metadata() {
                     if let Ok(mtime) = metadata.modified() {
@@ -1401,18 +1498,16 @@ impl SimpleComponent for MainApp {
                 } else {
                     true
                 };
-                
+
                 if needs_reindex {
                     if let Ok(content) = note.read() {
                         let folder = notes_dir.relative_folder(note.path());
-                        
+
                         // index_note ahora sincroniza tags internamente
-                        if notes_db.index_note(
-                            note.name(),
-                            path_str,
-                            &content,
-                            folder.as_deref(),
-                        ).is_ok() {
+                        if notes_db
+                            .index_note(note.name(), path_str, &content, folder.as_deref())
+                            .is_ok()
+                        {
                             indexed_count += 1;
                         }
                     }
@@ -1420,14 +1515,16 @@ impl SimpleComponent for MainApp {
                     skipped_count += 1;
                 }
             }
-            
+
             // Confirmar transacción
             let _ = notes_db.commit_transaction();
-            
+
             let elapsed = start_time.elapsed();
             println!(
                 "✓ {} notas indexadas, {} sin cambios ({:.2}ms)",
-                indexed_count, skipped_count, elapsed.as_secs_f64() * 1000.0
+                indexed_count,
+                skipped_count,
+                elapsed.as_secs_f64() * 1000.0
             );
         }
 
@@ -1475,11 +1572,9 @@ impl SimpleComponent for MainApp {
         }
 
         // Helper para crear nota de novedades cuando hay una actualización
-        fn create_whats_new_note(
-            notes_dir: &NotesDirectory,
-            version: &str,
-        ) {
-            let whats_new_content = format!(r#"# 🆕 What's New in NotNative v{}
+        fn create_whats_new_note(notes_dir: &NotesDirectory, version: &str) {
+            let whats_new_content = format!(
+                r#"# 🆕 What's New in NotNative v{}
 
 Thanks for updating! Here are the new features:
 
@@ -1525,7 +1620,9 @@ Add metadata directly in your notes:
 Enjoy the new features! 🚀
 
 *For keyboard shortcuts, check @NotNative_Atajos_de_Teclado*
-"#, version);
+"#,
+                version
+            );
 
             // Crear en carpeta Notnative con nombre en inglés
             let note_name = format!("Notnative/Whats_New_v{}", version.replace('.', "_"));
@@ -1551,10 +1648,10 @@ Enjoy the new features! 🚀
             notes_config: &Rc<RefCell<NotesConfig>>,
         ) {
             const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
-            
+
             let is_new = notes_config.borrow().is_new_version(CURRENT_VERSION);
             let onboarding_completed = notes_config.borrow().is_onboarding_completed();
-            
+
             // Solo crear nota de novedades si:
             // 1. Es una nueva versión
             // 2. El onboarding ya se completó (no es primera vez)
@@ -2462,21 +2559,23 @@ Enjoy taking notes! 📓
         base_view_grid.add_css_class("base-view-grid");
 
         base_view_scroll.set_child(Some(&base_view_grid));
-        
+
         // Crear BaseTableWidget con persistencia (compartiendo i18n global)
         let base_table_widget = BaseTableWidget::new(i18n.clone());
-        
+
         // Añadir ambos: el scroll legacy (oculto) y el nuevo widget
         base_view_container.append(&base_view_scroll);
         base_view_container.append(base_table_widget.widget());
-        
+
         // Ocultar el grid legacy, mostrar el nuevo widget
         base_view_scroll.set_visible(false);
         base_table_widget.widget().set_visible(true);
         base_table_widget.widget().set_vexpand(true);
 
         // Agregar al content_stack
-        widgets.content_stack.add_named(&base_view_container, Some("base"));
+        widgets
+            .content_stack
+            .add_named(&base_view_container, Some("base"));
 
         // ==================== CHAT AI ====================
 
@@ -3037,7 +3136,7 @@ Enjoy taking notes! 📓
                 for entry in entries.flatten() {
                     if let Ok(metadata) = entry.metadata() {
                         let entry_path = entry.path();
-                        
+
                         // Ignorar carpetas ocultas y especiales
                         if let Some(name) = entry_path.file_name().and_then(|n| n.to_str()) {
                             if name.starts_with('.') || name == ".history" || name == ".trash" {
@@ -3114,7 +3213,7 @@ Enjoy taking notes! 📓
             }
             _ => {}
         }
-        
+
         // Limpiar propiedades inline huérfanas
         if let Err(e) = notes_db.cleanup_orphaned_inline_properties() {
             eprintln!("⚠️ Error al limpiar propiedades inline huérfanas: {}", e);
@@ -3420,7 +3519,7 @@ Enjoy taking notes! 📓
                 );
             }
         }
-        
+
         // Configurar handler para detectar cuando el WebView termina de cargar (watchdog)
         {
             use webkit6::prelude::WebViewExt;
@@ -3652,7 +3751,7 @@ Enjoy taking notes! 📓
                 });
             }
         ));
-        
+
         // Acción para ver historial de la nota
         let show_history_action = gtk::gio::SimpleAction::new("show_history", None);
         show_history_action.connect_activate(gtk::glib::clone!(
@@ -3865,7 +3964,11 @@ Enjoy taking notes! 📓
                         "Escape" => {
                             sender.input(AppMsg::KeyPress {
                                 key: key_name,
-                                modifiers: KeyModifiers { ctrl: false, alt: false, shift: false },
+                                modifiers: KeyModifiers {
+                                    ctrl: false,
+                                    alt: false,
+                                    shift: false,
+                                },
                             });
                             return gtk::glib::Propagation::Stop;
                         }
@@ -4637,17 +4740,14 @@ Enjoy taking notes! 📓
             sender,
             move |_list_box, row| {
                 // Obtener el ID de la base (guardado como i64)
-                let base_id = unsafe {
-                    row.data::<i64>("base_id")
-                        .map(|data| *data.as_ref())
-                };
-                
+                let base_id = unsafe { row.data::<i64>("base_id").map(|data| *data.as_ref()) };
+
                 if let Some(id) = base_id {
                     sender.input(AppMsg::LoadBase(id.to_string()));
                 }
             }
         ));
-        
+
         // Agregar click derecho para menú contextual en bases
         let bases_right_click = gtk::GestureClick::new();
         bases_right_click.set_button(3); // Botón derecho
@@ -4661,20 +4761,21 @@ Enjoy taking notes! 📓
                     // Obtener la fila bajo el click
                     if let Some(row) = bases_list.row_at_y(y as i32) {
                         // Obtener ID y nombre de la base
-                        let base_id: Option<i64> = unsafe {
-                            row.data::<i64>("base_id")
-                                .map(|data| *data.as_ref())
-                        };
-                        
+                        let base_id: Option<i64> =
+                            unsafe { row.data::<i64>("base_id").map(|data| *data.as_ref()) };
+
                         if let Some(id) = base_id {
                             // Obtener nombre desde el label hijo
                             if let Some(hbox) = row.child() {
                                 if let Some(hbox) = hbox.downcast_ref::<gtk::Box>() {
                                     // El segundo hijo es el label con el nombre
-                                    if let Some(label) = hbox.first_child().and_then(|c| c.next_sibling()) {
+                                    if let Some(label) =
+                                        hbox.first_child().and_then(|c| c.next_sibling())
+                                    {
                                         if let Some(label) = label.downcast_ref::<gtk::Label>() {
                                             let name = label.text().to_string();
-                                            sender.input(AppMsg::ShowBaseContextMenu(x, y, id, name));
+                                            sender
+                                                .input(AppMsg::ShowBaseContextMenu(x, y, id, name));
                                         }
                                     }
                                 }
@@ -5442,14 +5543,14 @@ Enjoy taking notes! 📓
             split_view_clone.set_position(200);
             sender_clone.input(AppMsg::ToggleSidebar);
         });
-        
+
         // Conectar al cambio de tema del sistema para actualizar WebViews automáticamente
         if let Some(settings) = gtk::Settings::default() {
             let sender_for_theme = sender.clone();
             settings.connect_gtk_application_prefer_dark_theme_notify(move |_| {
                 sender_for_theme.input(AppMsg::RefreshTheme);
             });
-            
+
             let sender_for_theme2 = sender.clone();
             settings.connect_gtk_theme_name_notify(move |_| {
                 sender_for_theme2.input(AppMsg::RefreshTheme);
@@ -5480,15 +5581,17 @@ Enjoy taking notes! 📓
                 // Invalidar cache y forzar re-renderizado del preview
                 *self.cached_source_text.borrow_mut() = None;
                 self.render_preview_html();
-                
+
                 // Actualizar color de fondo del WebView de preview según el tema
                 use webkit6::prelude::WebViewExt;
                 let bg_color = match self.theme {
                     ThemePreference::Light => gtk::gdk::RGBA::new(0.95, 0.95, 0.95, 1.0),
-                    ThemePreference::Dark | ThemePreference::FollowSystem => gtk::gdk::RGBA::new(0.12, 0.12, 0.12, 1.0),
+                    ThemePreference::Dark | ThemePreference::FollowSystem => {
+                        gtk::gdk::RGBA::new(0.12, 0.12, 0.12, 1.0)
+                    }
                 };
                 self.preview_webview.set_background_color(&bg_color);
-                
+
                 // Refrescar WebView de bases de datos
                 let is_dark = match self.theme {
                     ThemePreference::Light => false,
@@ -5559,7 +5662,7 @@ Enjoy taking notes! 📓
                 if mode != EditorMode::ChatAI && self.sidebar_visible {
                     self.sidebar_visible = false;
                     self.animate_sidebar(0);
-                    
+
                     // Devolver foco al widget correcto según el modo
                     let current_mode = mode;
                     let markdown_enabled = self.markdown_enabled;
@@ -5744,12 +5847,14 @@ Enjoy taking notes! 📓
             // Handlers del sidebar VS Code style
             AppMsg::SwitchToPanel(panel) => {
                 self.active_panel = panel;
-                
+
                 // Obtener vista actual del content_stack
-                let current_view = self.content_stack.visible_child_name()
+                let current_view = self
+                    .content_stack
+                    .visible_child_name()
                     .map(|s| s.to_string())
                     .unwrap_or_default();
-                
+
                 // Actualizar estados visuales de los botones con CSS classes
                 match panel {
                     SidebarPanel::Notes => {
@@ -5793,7 +5898,7 @@ Enjoy taking notes! 📓
                         return;
                     }
                 }
-                
+
                 // Asegurar que el sidebar esté visible (solo para Notes y Bases)
                 if !self.sidebar_visible {
                     self.sidebar_visible = true;
@@ -5801,13 +5906,13 @@ Enjoy taking notes! 📓
                     self.animate_sidebar(250);
                 }
             }
-            
+
             AppMsg::RefreshBasesPanel => {
                 // Limpiar lista actual
                 while let Some(child) = self.bases_list.first_child() {
                     self.bases_list.remove(&child);
                 }
-                
+
                 // Cargar bases desde la base de datos
                 // list_bases() retorna Vec<(i64, String, Option<String>, Option<String>)>
                 // (id, name, description, source_folder)
@@ -5817,19 +5922,19 @@ Enjoy taking notes! 📓
                             let row = gtk::ListBoxRow::new();
                             let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 8);
                             hbox.set_margin_all(8);
-                            
+
                             // Icono
                             let icon = gtk::Image::from_icon_name("view-grid-symbolic");
                             icon.add_css_class("dim-label");
                             hbox.append(&icon);
-                            
+
                             // Nombre de la base
                             let label = gtk::Label::new(Some(&name));
                             label.set_xalign(0.0);
                             label.set_hexpand(true);
                             label.set_ellipsize(gtk::pango::EllipsizeMode::End);
                             hbox.append(&label);
-                            
+
                             // Descripción si está disponible
                             if let Some(desc) = &description {
                                 let desc_label = gtk::Label::new(Some(desc));
@@ -5837,17 +5942,17 @@ Enjoy taking notes! 📓
                                 desc_label.add_css_class("caption");
                                 hbox.append(&desc_label);
                             }
-                            
+
                             row.set_child(Some(&hbox));
-                            
+
                             // Guardar ID de la base en la fila (i64)
                             unsafe {
                                 row.set_data("base_id", id);
                             }
-                            
+
                             self.bases_list.append(&row);
                         }
-                        
+
                         // Si no hay bases, mostrar mensaje
                         if self.bases_list.first_child().is_none() {
                             let row = gtk::ListBoxRow::new();
@@ -5864,7 +5969,7 @@ Enjoy taking notes! 📓
                     }
                 }
             }
-            
+
             AppMsg::CreateNewBase => {
                 // Crear diálogo simple para nueva base
                 let dialog = gtk::Dialog::builder()
@@ -5873,58 +5978,60 @@ Enjoy taking notes! 📓
                     .transient_for(&self.main_window)
                     .default_width(400)
                     .build();
-                
+
                 dialog.add_button("Cancelar", gtk::ResponseType::Cancel);
                 dialog.add_button("Crear", gtk::ResponseType::Accept);
-                
+
                 let content = dialog.content_area();
                 content.set_spacing(12);
                 content.set_margin_all(16);
-                
+
                 // Icono y título
                 let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
                 let icon = gtk::Label::new(Some("📊"));
                 icon.add_css_class("title-1");
                 header.append(&icon);
-                
+
                 let title = gtk::Label::new(Some("Crear nueva Base de datos"));
                 title.add_css_class("title-2");
                 header.append(&title);
                 content.append(&header);
-                
-                let hint = gtk::Label::new(Some("Una Base muestra tus notas como tabla, con las propiedades [campo::valor] como columnas. Podrás configurar filtros y columnas después."));
+
+                let hint = gtk::Label::new(Some(
+                    "Una Base muestra tus notas como tabla, con las propiedades [campo::valor] como columnas. Podrás configurar filtros y columnas después.",
+                ));
                 hint.set_wrap(true);
                 hint.set_xalign(0.0);
                 hint.add_css_class("dim-label");
                 hint.set_margin_top(8);
                 hint.set_margin_bottom(8);
                 content.append(&hint);
-                
+
                 // Campo de nombre
                 let name_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
                 let name_label = gtk::Label::new(Some("Nombre"));
                 name_label.set_xalign(0.0);
                 name_box.append(&name_label);
-                
+
                 let name_entry = gtk::Entry::new();
                 name_entry.set_placeholder_text(Some("Mi Base de Datos"));
                 name_box.append(&name_entry);
                 content.append(&name_box);
-                
+
                 // Campo de descripción (opcional)
                 let desc_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
                 let desc_label = gtk::Label::new(Some("Descripción (opcional)"));
                 desc_label.set_xalign(0.0);
                 desc_box.append(&desc_label);
-                
+
                 let desc_entry = gtk::Entry::new();
                 desc_entry.set_placeholder_text(Some("Descripción de la base"));
                 desc_box.append(&desc_entry);
                 content.append(&desc_box);
-                
+
                 let sender_clone = sender.clone();
                 let notes_db = self.notes_db.clone_connection();
-                
+
                 dialog.connect_response(move |dialog, response| {
                     if response == gtk::ResponseType::Accept {
                         let name = name_entry.text().to_string();
@@ -5932,19 +6039,19 @@ Enjoy taking notes! 📓
                             let text = desc_entry.text().to_string();
                             if text.is_empty() { None } else { Some(text) }
                         };
-                        
+
                         if !name.is_empty() {
                             use crate::core::Base;
                             let base = Base::new(&name);
                             // Sin carpeta fuente = todas las notas
                             // Las columnas se descubren automáticamente
                             let config_yaml = serde_yaml::to_string(&base).unwrap_or_default();
-                            
+
                             match notes_db.create_base(
-                                &name, 
-                                description.as_deref(), 
+                                &name,
+                                description.as_deref(),
                                 None, // Sin filtro de carpeta inicial
-                                &config_yaml
+                                &config_yaml,
                             ) {
                                 Ok(_id) => {
                                     sender_clone.input(AppMsg::RefreshBasesPanel);
@@ -5957,37 +6064,52 @@ Enjoy taking notes! 📓
                     }
                     dialog.close();
                 });
-                
+
                 dialog.present();
             }
-            
+
             AppMsg::LoadBase(base_id) => {
                 println!("DEBUG: LoadBase recibido con id={}", base_id);
                 // Parsear base_id como i64
                 if let Ok(id) = base_id.parse::<i64>() {
                     // Obtener información de la base
                     match self.notes_db.get_base(id) {
-                        Ok(Some((_, name, _description, _source_folder, config_yaml, _active_view))) => {
+                        Ok(Some((
+                            _,
+                            name,
+                            _description,
+                            _source_folder,
+                            config_yaml,
+                            _active_view,
+                        ))) => {
                             // Guardar el ID de la base actual
                             *self.current_base_id.borrow_mut() = Some(id);
-                            
+
                             // Actualizar título
                             self.base_view_title.set_text(&name);
-                            
+
                             // Parsear la configuración de la Base
                             match Base::parse(&config_yaml) {
                                 Ok(base) => {
                                     // Obtener el directorio de notas
                                     let notes_root = self.notes_dir.root();
-                                    
+
                                     // Cargar en el BaseTableWidget con persistencia
                                     let mut widget = self.base_table_widget.borrow_mut();
                                     let is_dark = match self.theme {
                                         ThemePreference::Light => false,
-                                        ThemePreference::Dark | ThemePreference::FollowSystem => true,
+                                        ThemePreference::Dark | ThemePreference::FollowSystem => {
+                                            true
+                                        }
                                     };
-                                    widget.load_base(id, base, self.notes_db.clone_connection(), notes_root, is_dark);
-                                    
+                                    widget.load_base(
+                                        id,
+                                        base,
+                                        self.notes_db.clone_connection(),
+                                        notes_root,
+                                        is_dark,
+                                    );
+
                                     // Configurar callback para abrir notas desde la tabla
                                     let sender_clone = sender.clone();
                                     widget.on_note_double_click(move |note_path| {
@@ -5997,17 +6119,20 @@ Enjoy taking notes! 📓
                                             .and_then(|s| s.to_str())
                                             .unwrap_or(note_path)
                                             .to_string();
-                                        sender_clone.input(AppMsg::LoadNoteFromSidebar { name: note_name });
+                                        sender_clone
+                                            .input(AppMsg::LoadNoteFromSidebar { name: note_name });
                                         sender_clone.input(AppMsg::CloseBaseView);
                                     });
-                                    
+
                                     // Configurar callback para abrir notas desde el grafo
                                     let sender_clone = sender.clone();
                                     widget.on_graph_note_click(move |note_name| {
-                                        sender_clone.input(AppMsg::LoadNoteFromSidebar { name: note_name.to_string() });
+                                        sender_clone.input(AppMsg::LoadNoteFromSidebar {
+                                            name: note_name.to_string(),
+                                        });
                                         sender_clone.input(AppMsg::CloseBaseView);
                                     });
-                                    
+
                                     // Configurar callback para recargar cuando cambie el source_type
                                     let sender_clone = sender.clone();
                                     let base_id_str = base_id.clone();
@@ -6015,13 +6140,13 @@ Enjoy taking notes! 📓
                                         // Recargar la base con el nuevo source_type
                                         sender_clone.input(AppMsg::LoadBase(base_id_str.clone()));
                                     });
-                                    
+
                                     // Configurar callback para cerrar sidebar al hacer clic en la vista
                                     let sender_clone = sender.clone();
                                     widget.on_view_clicked(move || {
                                         sender_clone.input(AppMsg::CloseSidebar);
                                     });
-                                    
+
                                     // Configurar callback para edición de celdas (escritura bidireccional)
                                     let db_clone = self.notes_db.clone_connection();
                                     let sender_clone = sender.clone();
@@ -6047,7 +6172,7 @@ Enjoy taking notes! 📓
                                     eprintln!("Error al parsear config de base: {}", e);
                                 }
                             }
-                            
+
                             // Mostrar la vista de base
                             self.content_stack.set_visible_child_name("base");
                         }
@@ -6060,13 +6185,13 @@ Enjoy taking notes! 📓
                     }
                 }
             }
-            
+
             AppMsg::CloseBaseView => {
                 // Volver al editor
                 *self.current_base_id.borrow_mut() = None;
                 self.content_stack.set_visible_child_name("editor");
             }
-            
+
             AppMsg::DeleteBase(base_id) => {
                 // Parsear base_id como i64
                 if let Ok(id) = base_id.parse::<i64>() {
@@ -6075,17 +6200,17 @@ Enjoy taking notes! 📓
                         let widget = self.base_table_widget.borrow();
                         widget.current_base_id() == Some(id)
                     };
-                    
+
                     // Si estaba abierta, limpiarla primero
                     if was_open {
                         let widget = self.base_table_widget.borrow();
                         widget.clear();
                     }
-                    
+
                     match self.notes_db.delete_base(id) {
                         Ok(_) => {
                             sender.input(AppMsg::RefreshBasesPanel);
-                            
+
                             // Si la base eliminada estaba abierta, cargar otra o ir a notas
                             if was_open {
                                 // Intentar cargar la primera base disponible
@@ -6108,26 +6233,26 @@ Enjoy taking notes! 📓
                     }
                 }
             }
-            
+
             AppMsg::ShowBaseContextMenu(x, y, base_id, base_name) => {
                 // Crear menú contextual para bases
                 let menu = gtk::gio::Menu::new();
                 let i18n = self.i18n.borrow();
-                
+
                 menu.append(Some(&i18n.t("rename")), Some("base.rename"));
                 menu.append(Some(&i18n.t("delete")), Some("base.delete"));
-                
+
                 // Crear PopoverMenu
                 let popover = gtk::PopoverMenu::from_model(Some(&menu));
                 popover.set_parent(&self.bases_list);
                 popover.set_has_arrow(true);
-                
+
                 let rect = gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1);
                 popover.set_pointing_to(Some(&rect));
-                
+
                 // Crear grupo de acciones
                 let action_group = gtk::gio::SimpleActionGroup::new();
-                
+
                 // Acción renombrar
                 let rename_action = gtk::gio::SimpleAction::new("rename", None);
                 let sender_clone = sender.clone();
@@ -6138,7 +6263,7 @@ Enjoy taking notes! 📓
                 rename_action.connect_activate(move |_, _| {
                     popover_clone.popdown();
                     popover_clone.unparent();
-                    
+
                     // Mostrar diálogo de renombrar
                     let dialog = gtk::Dialog::builder()
                         .title("Renombrar Base")
@@ -6146,38 +6271,36 @@ Enjoy taking notes! 📓
                         .transient_for(&main_window)
                         .default_width(400)
                         .build();
-                    
+
                     let content = dialog.content_area();
                     content.set_spacing(12);
                     content.set_margin_all(16);
-                    
-                    let entry = gtk::Entry::builder()
-                        .text(&base_name_clone)
-                        .build();
+
+                    let entry = gtk::Entry::builder().text(&base_name_clone).build();
                     content.append(&entry);
-                    
+
                     dialog.add_button("Cancelar", gtk::ResponseType::Cancel);
                     dialog.add_button("Renombrar", gtk::ResponseType::Accept);
-                    
+
                     let sender_for_dialog = sender_clone.clone();
                     let base_name_for_compare = base_name_clone.clone();
                     dialog.connect_response(move |dialog, response| {
                         if response == gtk::ResponseType::Accept {
                             let new_name = entry.text().to_string();
                             if !new_name.is_empty() && new_name != base_name_for_compare {
-                                sender_for_dialog.input(AppMsg::RenameBase { 
-                                    id: base_id_clone, 
-                                    new_name 
+                                sender_for_dialog.input(AppMsg::RenameBase {
+                                    id: base_id_clone,
+                                    new_name,
                                 });
                             }
                         }
                         dialog.close();
                     });
-                    
+
                     dialog.present();
                 });
                 action_group.add_action(&rename_action);
-                
+
                 // Acción eliminar
                 let delete_action = gtk::gio::SimpleAction::new("delete", None);
                 let sender_clone = sender.clone();
@@ -6188,21 +6311,19 @@ Enjoy taking notes! 📓
                     sender_clone.input(AppMsg::DeleteBase(base_id.to_string()));
                 });
                 action_group.add_action(&delete_action);
-                
+
                 popover.insert_action_group("base", Some(&action_group));
                 popover.popup();
             }
-            
-            AppMsg::RenameBase { id, new_name } => {
-                match self.notes_db.rename_base(id, &new_name) {
-                    Ok(_) => {
-                        sender.input(AppMsg::RefreshBasesPanel);
-                    }
-                    Err(e) => {
-                        eprintln!("Error al renombrar base: {}", e);
-                    }
+
+            AppMsg::RenameBase { id, new_name } => match self.notes_db.rename_base(id, &new_name) {
+                Ok(_) => {
+                    sender.input(AppMsg::RefreshBasesPanel);
                 }
-            }
+                Err(e) => {
+                    eprintln!("Error al renombrar base: {}", e);
+                }
+            },
 
             AppMsg::KeyPress { key, modifiers } => {
                 let current_mode = *self.mode.borrow();
@@ -6308,7 +6429,7 @@ Enjoy taking notes! 📓
                 // NOTA: Solo si NO estamos en modo ChatAI (ChatAI tiene su propio handler)
                 // Si ESC cierra un popover visible, NO continuar con el cambio de modo
                 let mut popover_was_closed = false;
-                
+
                 if current_mode != EditorMode::ChatAI
                     && (key == "Escape"
                         || (current_mode != EditorMode::Insert
@@ -6334,7 +6455,7 @@ Enjoy taking notes! 📓
                     self.note_mention_popup.popdown();
                     *self.current_mention_prefix.borrow_mut() = None;
                 }
-                
+
                 // Cerrar popover de propiedades inline con Escape
                 if current_mode != EditorMode::ChatAI
                     && key == "Escape"
@@ -6345,7 +6466,7 @@ Enjoy taking notes! 📓
                     *self.current_property_key.borrow_mut() = None;
                     *self.current_property_prefix.borrow_mut() = None;
                 }
-                
+
                 // Si un popover fue cerrado con ESC, no continuar con el cambio de modo
                 // El usuario necesita presionar ESC de nuevo para cambiar de modo
                 if popover_was_closed && current_mode == EditorMode::Insert {
@@ -6451,7 +6572,7 @@ Enjoy taking notes! 📓
 
                 // Si venimos del modo ChatAI, forzar reset completo del estado
                 let was_in_chat = *self.mode.borrow() == EditorMode::ChatAI;
-                
+
                 if let Err(e) = self.load_note(&clean_name) {
                     eprintln!(
                         "Error cargando nota '{}' (original: '{}'): {}",
@@ -6469,7 +6590,7 @@ Enjoy taking notes! 📓
                     if *self.mode.borrow() == EditorMode::ChatAI {
                         *self.mode.borrow_mut() = EditorMode::Normal;
                     }
-                    
+
                     // Si veníamos del chat, resetear también el flag de sincronización
                     // por si quedó en un estado inconsistente
                     if was_in_chat {
@@ -6500,7 +6621,7 @@ Enjoy taking notes! 📓
                             self.text_view.grab_focus();
                         }
                     }
-                    
+
                     // Si veníamos del chat, refrescar también la lista de notas del sidebar
                     // para asegurar que la UI está actualizada
                     if was_in_chat {
@@ -6767,12 +6888,12 @@ Enjoy taking notes! 📓
                 );
                 menu.append(Some(&i18n.t("change_icon")), Some("item.change_icon"));
                 menu.append(Some(&i18n.t("rename")), Some("item.rename"));
-                
+
                 // Solo mostrar historial para notas, no carpetas
                 if !is_folder {
                     menu.append(Some(&i18n.t("view_history")), Some("item.show_history"));
                 }
-                
+
                 menu.append(Some(&i18n.t("delete")), Some("item.delete"));
                 self.context_menu.set_menu_model(Some(&menu));
 
@@ -7605,36 +7726,50 @@ Enjoy taking notes! 📓
                 // Buscar patrón [campo:: o [
                 if let Some(bracket_pos) = line_text.rfind('[') {
                     let after_bracket = &line_text[bracket_pos + 1..];
-                    
+
                     // Verificar que no esté cerrado (no hay ])
                     if !after_bracket.contains(']') {
                         // Caso 1: [campo:: → sugerir valores
                         if let Some(colon_pos) = after_bracket.find("::") {
                             let property_key = after_bracket[..colon_pos].trim();
                             let value_prefix = after_bracket[colon_pos + 2..].to_string();
-                            
+
                             // Validar que el nombre del campo es válido
-                            if !property_key.is_empty() 
-                                && property_key.chars().next().map(|c| c.is_alphabetic()).unwrap_or(false) 
+                            if !property_key.is_empty()
+                                && property_key
+                                    .chars()
+                                    .next()
+                                    .map(|c| c.is_alphabetic())
+                                    .unwrap_or(false)
                             {
-                                println!("🔍 Property value completion: key='{}', prefix='{}'", property_key, value_prefix);
-                                *self.current_property_key.borrow_mut() = Some(property_key.to_string());
-                                *self.current_property_prefix.borrow_mut() = Some(value_prefix.clone());
-                                
+                                println!(
+                                    "🔍 Property value completion: key='{}', prefix='{}'",
+                                    property_key, value_prefix
+                                );
+                                *self.current_property_key.borrow_mut() =
+                                    Some(property_key.to_string());
+                                *self.current_property_prefix.borrow_mut() =
+                                    Some(value_prefix.clone());
+
                                 // Mostrar popup con sugerencias de valores
-                                self.show_property_suggestions(property_key, &value_prefix, &sender);
+                                self.show_property_suggestions(
+                                    property_key,
+                                    &value_prefix,
+                                    &sender,
+                                );
                                 return;
                             }
                         } else {
                             // Caso 2: [ sin :: → sugerir nombres de propiedades
                             let key_prefix = after_bracket.trim();
-                            
+
                             // Solo si no tiene caracteres especiales que indiquen otro tipo de corchete
                             if !key_prefix.starts_with('/') && !key_prefix.starts_with('!') {
                                 println!("🔍 Property key completion: prefix='{}'", key_prefix);
                                 *self.current_property_key.borrow_mut() = None; // Indicar que buscamos keys, no values
-                                *self.current_property_prefix.borrow_mut() = Some(key_prefix.to_string());
-                                
+                                *self.current_property_prefix.borrow_mut() =
+                                    Some(key_prefix.to_string());
+
                                 // Mostrar popup con sugerencias de nombres de propiedades
                                 self.show_property_key_suggestions(key_prefix, &sender);
                                 return;
@@ -7686,43 +7821,52 @@ Enjoy taking notes! 📓
                         self.text_buffer.place_cursor(&start_iter);
                     } else if let Some(ref prop_key) = key_opt {
                         // Si es VALUE, buscar estructura completa del registro
-                        let complete_structure = self.notes_db.get_complete_record_structure(prop_key, &actual_value);
-                        
+                        let complete_structure = self
+                            .notes_db
+                            .get_complete_record_structure(prop_key, &actual_value);
+
                         // Buscar el inicio del [ para reemplazar toda la propiedad
                         let mut line_start = cursor_iter.clone();
                         line_start.set_line_offset(0);
                         let line_text = self.text_buffer.text(&line_start, &cursor_iter, false);
-                        
+
                         if let Some(bracket_pos) = line_text.rfind('[') {
                             let mut bracket_iter = line_start.clone();
                             bracket_iter.forward_chars(bracket_pos as i32);
-                            
+
                             // Borrar desde [ hasta el cursor
                             let mut end_iter = cursor_iter.clone();
                             self.text_buffer.delete(&mut bracket_iter, &mut end_iter);
-                            
+
                             // Insertar estructura completa o simple
                             match complete_structure {
                                 Ok(Some(props)) if props.len() > 1 => {
                                     // Estructura completa: [key:::value, prop2::valor2, ...]
-                                    let formatted: Vec<String> = props.iter().enumerate().map(|(i, (k, v))| {
-                                        if i == 0 {
-                                            // Primera propiedad (la key principal) -> usar ::: (hidden)
-                                            format!("{}:::{}", k, v)
-                                        } else {
-                                            // Otras propiedades -> usar :: con valor existente o vacío
-                                            format!("{}::{}", k, v)
-                                        }
-                                    }).collect();
+                                    let formatted: Vec<String> = props
+                                        .iter()
+                                        .enumerate()
+                                        .map(|(i, (k, v))| {
+                                            if i == 0 {
+                                                // Primera propiedad (la key principal) -> usar ::: (hidden)
+                                                format!("{}:::{}", k, v)
+                                            } else {
+                                                // Otras propiedades -> usar :: con valor existente o vacío
+                                                format!("{}::{}", k, v)
+                                            }
+                                        })
+                                        .collect();
                                     let full_prop = format!("[{}]", formatted.join(", "));
                                     self.text_buffer.insert(&mut bracket_iter, &full_prop);
                                 }
                                 _ => {
                                     // Sin estructura o error: insertar simple
-                                    self.text_buffer.insert(&mut bracket_iter, &format!("[{}::{}]", prop_key, actual_value));
+                                    self.text_buffer.insert(
+                                        &mut bracket_iter,
+                                        &format!("[{}::{}]", prop_key, actual_value),
+                                    );
                                 }
                             }
-                            
+
                             self.text_buffer.place_cursor(&bracket_iter);
                         } else {
                             // Fallback: reemplazar solo el prefix
@@ -7730,7 +7874,8 @@ Enjoy taking notes! 📓
                             start_iter.backward_chars(prefix.len() as i32);
                             let mut end_iter = cursor_iter.clone();
                             self.text_buffer.delete(&mut start_iter, &mut end_iter);
-                            self.text_buffer.insert(&mut start_iter, &format!("{}]", actual_value));
+                            self.text_buffer
+                                .insert(&mut start_iter, &format!("{}]", actual_value));
                             self.text_buffer.place_cursor(&start_iter);
                         }
                     } else {
@@ -7739,7 +7884,8 @@ Enjoy taking notes! 📓
                         start_iter.backward_chars(prefix.len() as i32);
                         let mut end_iter = cursor_iter.clone();
                         self.text_buffer.delete(&mut start_iter, &mut end_iter);
-                        self.text_buffer.insert(&mut start_iter, &format!("{}]", actual_value));
+                        self.text_buffer
+                            .insert(&mut start_iter, &format!("{}]", actual_value));
                         self.text_buffer.place_cursor(&start_iter);
                     }
 
@@ -7759,7 +7905,7 @@ Enjoy taking notes! 📓
             AppMsg::PropertyCompletionNavigate(direction) => {
                 // Navegar por las sugerencias de propiedades
                 let mut selected = self.property_completion_selected.borrow_mut();
-                
+
                 // Contar cuántas filas activables hay (excluyendo el header)
                 let mut count = 0;
                 let mut index = 0;
@@ -7769,11 +7915,11 @@ Enjoy taking notes! 📓
                     }
                     index += 1;
                 }
-                
+
                 if count == 0 {
                     return;
                 }
-                
+
                 // Actualizar selección
                 let new_selected = if direction > 0 {
                     // Abajo
@@ -7794,7 +7940,7 @@ Enjoy taking notes! 📓
                 };
                 *selected = new_selected;
                 drop(selected);
-                
+
                 // Actualizar estilos visuales de las filas
                 let mut activatable_index = 0;
                 let mut index = 0;
@@ -7811,7 +7957,7 @@ Enjoy taking notes! 📓
                     }
                     index += 1;
                 }
-                
+
                 // Mantener el foco en el text_view para seguir escribiendo
                 self.text_view.grab_focus();
             }
@@ -7819,13 +7965,13 @@ Enjoy taking notes! 📓
             AppMsg::PropertyCompletionAccept => {
                 // Aceptar la sugerencia seleccionada
                 let selected = *self.property_completion_selected.borrow();
-                
+
                 if selected < 0 {
                     // Si no hay selección, seleccionar la primera
                     sender.input(AppMsg::PropertyCompletionNavigate(1));
                     return;
                 }
-                
+
                 // Buscar la fila seleccionada y obtener su valor
                 let mut activatable_index = 0;
                 let mut index = 0;
@@ -7836,7 +7982,9 @@ Enjoy taking notes! 📓
                             if let Some(child) = row.child() {
                                 if let Some(hbox) = child.downcast_ref::<gtk::Box>() {
                                     if let Some(label_widget) = hbox.first_child() {
-                                        if let Some(label) = label_widget.downcast_ref::<gtk::Label>() {
+                                        if let Some(label) =
+                                            label_widget.downcast_ref::<gtk::Label>()
+                                        {
                                             let text = label.text().to_string();
                                             // Si termina con ::, es una key
                                             let value = if text.ends_with("::") {
@@ -11137,14 +11285,16 @@ Para ello debes usar la herramienta semantic_search para encontrar las notas ade
                     if let Ok(content) = std::fs::read_to_string(history_file) {
                         // Obtener la ruta del archivo actual
                         let note_path = self.notes_dir.root().join(format!("{}.md", note_name));
-                        
+
                         // Hacer backup de la versión actual antes de restaurar
                         if note_path.exists() {
-                            if let Ok(note_file) = crate::core::note_file::NoteFile::open(&note_path) {
+                            if let Ok(note_file) =
+                                crate::core::note_file::NoteFile::open(&note_path)
+                            {
                                 let _ = note_file.backup(&self.notes_dir);
                             }
                         }
-                        
+
                         // Escribir el contenido restaurado
                         if let Err(e) = std::fs::write(&note_path, &content) {
                             eprintln!("Error restaurando nota: {}", e);
@@ -11163,11 +11313,11 @@ Para ello debes usar la herramienta semantic_search para encontrar las notas ade
                     }
                 }
             }
-            
+
             AppMsg::InsertMarkdownFormat(format) => {
                 self.insert_markdown_format(format);
             }
-            
+
             AppMsg::ToggleFormatToolbar(show) => {
                 self.notes_config.borrow_mut().set_show_format_toolbar(show);
                 // Si estamos en modo Insert, actualizar visibilidad inmediatamente
@@ -11722,10 +11872,10 @@ impl MainApp {
                         EditorMode::Normal => {
                             self.text_view.set_editable(false);
                             self.text_view.set_cursor_visible(true); // Cursor visible para ver navegación
-                            
+
                             // Ocultar toolbar de formato al salir de modo Insert
                             self.format_toolbar.set_visible(false);
-                            
+
                             // Si markdown está habilitado, sincronizar vista y dar foco al preview
                             if self.markdown_enabled {
                                 self.sync_to_view();
@@ -11744,7 +11894,7 @@ impl MainApp {
                                 self.sidebar_visible = false;
                                 self.animate_sidebar(0);
                             }
-                            
+
                             // Mostrar toolbar de formato si está habilitada en config
                             let show_toolbar = self.notes_config.borrow().show_format_toolbar();
                             self.format_toolbar.set_visible(show_toolbar);
@@ -11757,10 +11907,12 @@ impl MainApp {
                 // IMPORTANTE: Sincronizar posición del cursor desde GTK antes de operar
                 let current_mode = *self.mode.borrow();
                 if current_mode == EditorMode::Insert {
-                    let iter = self.text_buffer.iter_at_mark(&self.text_buffer.get_insert());
+                    let iter = self
+                        .text_buffer
+                        .iter_at_mark(&self.text_buffer.get_insert());
                     self.cursor_position = iter.offset() as usize;
                 }
-                
+
                 // Si hay selección, primero borrarla
                 if has_selection {
                     self.delete_selection();
@@ -11774,21 +11926,25 @@ impl MainApp {
                 // El usuario puede haber movido el cursor con mouse/flechas en modo INSERT
                 let current_mode = *self.mode.borrow();
                 if current_mode == EditorMode::Insert {
-                    let iter = self.text_buffer.iter_at_mark(&self.text_buffer.get_insert());
+                    let iter = self
+                        .text_buffer
+                        .iter_at_mark(&self.text_buffer.get_insert());
                     self.cursor_position = iter.offset() as usize;
                 }
-                
+
                 // Si hay selección, primero borrarla
                 if has_selection {
                     self.delete_selection();
                 }
-                
+
                 // Detectar si estamos en una lista para auto-continuar
                 if let Some((line_idx, _col)) = self.buffer.char_to_line_col(self.cursor_position) {
                     if let Some(current_line) = self.buffer.line(line_idx) {
                         let line_trimmed = current_line.trim_end_matches('\n');
-                        
-                        if let Some((prefix, is_empty_item)) = Self::detect_list_prefix(line_trimmed) {
+
+                        if let Some((prefix, is_empty_item)) =
+                            Self::detect_list_prefix(line_trimmed)
+                        {
                             if is_empty_item {
                                 // La línea solo tiene el prefijo, eliminarla y terminar la lista
                                 let line_start = self.buffer.rope().line_to_char(line_idx);
@@ -11824,10 +11980,12 @@ impl MainApp {
                 // IMPORTANTE: Sincronizar posición del cursor desde GTK antes de operar
                 let current_mode = *self.mode.borrow();
                 if current_mode == EditorMode::Insert {
-                    let iter = self.text_buffer.iter_at_mark(&self.text_buffer.get_insert());
+                    let iter = self
+                        .text_buffer
+                        .iter_at_mark(&self.text_buffer.get_insert());
                     self.cursor_position = iter.offset() as usize;
                 }
-                
+
                 if has_selection {
                     // Borrar selección
                     self.delete_selection();
@@ -11843,10 +12001,12 @@ impl MainApp {
                 // IMPORTANTE: Sincronizar posición del cursor desde GTK antes de operar
                 let current_mode = *self.mode.borrow();
                 if current_mode == EditorMode::Insert {
-                    let iter = self.text_buffer.iter_at_mark(&self.text_buffer.get_insert());
+                    let iter = self
+                        .text_buffer
+                        .iter_at_mark(&self.text_buffer.get_insert());
                     self.cursor_position = iter.offset() as usize;
                 }
-                
+
                 if has_selection {
                     // Borrar selección
                     self.delete_selection();
@@ -12247,7 +12407,7 @@ impl MainApp {
 
         // Generar HTML con base_path para resolver imágenes locales
         let notes_base_path = self.notes_dir.root().to_path_buf();
-        
+
         // Extraer colores del tema GTK actual
         let gtk_colors = GtkThemeColors::from_widget(&self.main_window);
         let preview_colors = PreviewColors {
@@ -12260,7 +12420,7 @@ impl MainApp {
             accent: gtk_colors.accent,
             border: gtk_colors.border,
         };
-        
+
         let renderer = HtmlRenderer::with_colors(preview_theme, notes_base_path, preview_colors);
         let html = renderer.render(&buffer_text);
 
@@ -12291,10 +12451,10 @@ impl MainApp {
             if let Some(source_id) = self.webview_load_watchdog.borrow_mut().take() {
                 source_id.remove();
             }
-            
+
             // Marcar que la carga está pendiente
             *self.webview_load_completed.borrow_mut() = false;
-            
+
             // Verificar si el texto fuente cambió
             let cached_source = self.cached_source_text.borrow();
             let text_changed = cached_source.as_ref() != Some(&buffer_text);
@@ -12319,18 +12479,18 @@ impl MainApp {
 
             // Asegurar que el WebView (preview) está visible
             self.editor_stack.set_visible_child_name("preview");
-            
+
             // Iniciar watchdog: si el WebView no termina de cargar en 300ms, forzar reload
             let webview = self.preview_webview.clone();
             let load_completed = self.webview_load_completed.clone();
             let watchdog_id = self.webview_load_watchdog.clone();
-            
+
             let timeout_id = gtk::glib::timeout_add_local_once(
                 std::time::Duration::from_millis(300),
                 move || {
                     // Limpiar el ID del watchdog
                     *watchdog_id.borrow_mut() = None;
-                    
+
                     if !*load_completed.borrow() {
                         println!("⚠️ WebView watchdog: carga no completada, forzando reload");
                         use webkit6::prelude::WebViewExt;
@@ -12338,7 +12498,7 @@ impl MainApp {
                     }
                 },
             );
-            
+
             *self.webview_load_watchdog.borrow_mut() = Some(timeout_id);
 
             // Solo dar foco si se solicita
@@ -14053,20 +14213,20 @@ fn process_youtube_videos_async_with_spans(
 impl MainApp {
     /// Detecta si una línea tiene un prefijo de lista markdown y retorna el prefijo a usar
     /// para la siguiente línea. También indica si la línea solo contiene el prefijo (está vacía).
-    /// 
+    ///
     /// Soporta:
     /// - Listas con guión: `- item` o `- ` (vacío)
     /// - Listas con asterisco: `* item` o `* ` (vacío)
     /// - Listas con checkbox vacío: `- [ ] item` o `- [ ] ` (vacío)
     /// - Listas con checkbox marcado: `- [x] item` o `- [x] ` (vacío)
     /// - Listas numeradas: `1. item`, `2. item`, etc.
-    /// 
+    ///
     /// Retorna: Some((prefijo_para_nueva_línea, es_item_vacío))
     fn detect_list_prefix(line: &str) -> Option<(String, bool)> {
         // Capturar la indentación inicial (espacios/tabs)
         let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
         let content = line.trim_start();
-        
+
         // Checkbox vacío: - [ ] o * [ ]
         if content.starts_with("- [ ] ") || content.starts_with("* [ ] ") {
             let rest = &content[6..]; // Después de "- [ ] "
@@ -14076,10 +14236,13 @@ impl MainApp {
         if content == "- [ ]" || content == "* [ ]" {
             return Some((format!("{}- [ ] ", indent), true));
         }
-        
+
         // Checkbox marcado: - [x] o - [X] o * [x] o * [X]
-        if content.starts_with("- [x] ") || content.starts_with("- [X] ") 
-           || content.starts_with("* [x] ") || content.starts_with("* [X] ") {
+        if content.starts_with("- [x] ")
+            || content.starts_with("- [X] ")
+            || content.starts_with("* [x] ")
+            || content.starts_with("* [X] ")
+        {
             let rest = &content[6..];
             let is_empty = rest.trim().is_empty();
             // La siguiente línea debería ser checkbox vacío
@@ -14088,7 +14251,7 @@ impl MainApp {
         if content == "- [x]" || content == "- [X]" || content == "* [x]" || content == "* [X]" {
             return Some((format!("{}- [ ] ", indent), true));
         }
-        
+
         // Lista numerada: 1. , 2. , etc.
         if let Some(dot_pos) = content.find(". ") {
             let num_part = &content[..dot_pos];
@@ -14105,7 +14268,7 @@ impl MainApp {
                 return Some((format!("{}{}. ", indent, num + 1), true));
             }
         }
-        
+
         // Lista con guión: - item
         if content.starts_with("- ") {
             let rest = &content[2..];
@@ -14115,7 +14278,7 @@ impl MainApp {
         if content == "-" {
             return Some((format!("{}- ", indent), true));
         }
-        
+
         // Lista con asterisco: * item
         if content.starts_with("* ") {
             let rest = &content[2..];
@@ -14125,7 +14288,7 @@ impl MainApp {
         if content == "*" {
             return Some((format!("{}* ", indent), true));
         }
-        
+
         None
     }
 
@@ -14512,37 +14675,37 @@ impl MainApp {
         let mut pos = 0;
         while let Some(bracket_start) = line[pos..].find('[') {
             let absolute_start = pos + bracket_start;
-            
+
             if let Some(bracket_end) = line[absolute_start..].find(']') {
                 let absolute_end = absolute_start + bracket_end;
                 let content = &line[absolute_start + 1..absolute_end];
-                
+
                 // Verificar si contiene :: o ::: (propiedad inline)
                 let is_hidden = content.contains(":::");
                 let is_property = content.contains("::");
-                
+
                 if is_property {
                     // Calcular posiciones en caracteres
                     let char_start = line[..absolute_start].chars().count();
                     let char_end = line[..absolute_end + 1].chars().count();
-                    
+
                     let mut start_iter = line_start.clone();
                     start_iter.forward_chars(char_start as i32);
-                    
+
                     let mut end_iter = line_start.clone();
                     end_iter.forward_chars(char_end as i32);
-                    
+
                     let tag_name = if is_hidden {
                         "inline-property-hidden"
                     } else {
                         "inline-property"
                     };
-                    
+
                     if let Some(tag) = self.text_buffer.tag_table().lookup(tag_name) {
                         self.text_buffer.apply_tag(&tag, &start_iter, &end_iter);
                     }
                 }
-                
+
                 pos = absolute_end + 1;
             } else {
                 break;
@@ -15692,7 +15855,12 @@ impl MainApp {
         }
     }
 
-    fn show_property_suggestions(&self, property_key: &str, prefix: &str, sender: &ComponentSender<Self>) {
+    fn show_property_suggestions(
+        &self,
+        property_key: &str,
+        prefix: &str,
+        sender: &ComponentSender<Self>,
+    ) {
         // Limpiar sugerencias anteriores y resetear selección
         while let Some(row) = self.property_completion_list.row_at_index(0) {
             self.property_completion_list.remove(&row);
@@ -15702,8 +15870,12 @@ impl MainApp {
         // Obtener valores distintos para esta propiedad desde la BD
         match self.notes_db.get_distinct_values(property_key) {
             Ok(values) => {
-                println!("📋 Found {} distinct values for '{}'", values.len(), property_key);
-                
+                println!(
+                    "📋 Found {} distinct values for '{}'",
+                    values.len(),
+                    property_key
+                );
+
                 let prefix_lower = prefix.to_lowercase();
                 let matches: Vec<_> = values
                     .iter()
@@ -15718,63 +15890,63 @@ impl MainApp {
                     return;
                 }
 
-            // Añadir header con el nombre de la propiedad
-            let header = gtk::Label::new(Some(&format!("📝 {} valores", property_key)));
-            header.set_xalign(0.0);
-            header.add_css_class("dim-label");
-            header.add_css_class("caption");
-            header.set_margin_all(6);
-            
-            let header_row = gtk::ListBoxRow::new();
-            header_row.set_child(Some(&header));
-            header_row.set_activatable(false);
-            header_row.set_selectable(false);
-            self.property_completion_list.append(&header_row);
+                // Añadir header con el nombre de la propiedad
+                let header = gtk::Label::new(Some(&format!("📝 {} valores", property_key)));
+                header.set_xalign(0.0);
+                header.add_css_class("dim-label");
+                header.add_css_class("caption");
+                header.set_margin_all(6);
 
-            // Añadir cada sugerencia de valor
-            for value in matches {
-                let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-                row.set_margin_all(8);
+                let header_row = gtk::ListBoxRow::new();
+                header_row.set_child(Some(&header));
+                header_row.set_activatable(false);
+                header_row.set_selectable(false);
+                self.property_completion_list.append(&header_row);
 
-                let label = gtk::Label::new(Some(value));
-                label.set_xalign(0.0);
-                label.set_hexpand(true);
+                // Añadir cada sugerencia de valor
+                for value in matches {
+                    let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+                    row.set_margin_all(8);
 
-                row.append(&label);
+                    let label = gtk::Label::new(Some(value));
+                    label.set_xalign(0.0);
+                    label.set_hexpand(true);
 
-                let list_row = gtk::ListBoxRow::new();
-                list_row.set_child(Some(&row));
-                list_row.set_activatable(true);
+                    row.append(&label);
 
-                let value_clone = value.clone();
-                let gesture = gtk::GestureClick::new();
-                gesture.connect_released(gtk::glib::clone!(
-                    #[strong]
-                    sender,
-                    move |_, _, _, _| {
-                        sender.input(AppMsg::CompleteProperty(value_clone.clone()));
-                    }
-                ));
-                list_row.add_controller(gesture);
+                    let list_row = gtk::ListBoxRow::new();
+                    list_row.set_child(Some(&row));
+                    list_row.set_activatable(true);
 
-                self.property_completion_list.append(&list_row);
-                list_row.show();
-            }
+                    let value_clone = value.clone();
+                    let gesture = gtk::GestureClick::new();
+                    gesture.connect_released(gtk::glib::clone!(
+                        #[strong]
+                        sender,
+                        move |_, _, _, _| {
+                            sender.input(AppMsg::CompleteProperty(value_clone.clone()));
+                        }
+                    ));
+                    list_row.add_controller(gesture);
 
-            // Posicionar el popover cerca del cursor
-            let cursor_mark = self.text_buffer.get_insert();
-            let cursor_iter = self.text_buffer.iter_at_mark(&cursor_mark);
-            let cursor_rect = self.text_view.iter_location(&cursor_iter);
+                    self.property_completion_list.append(&list_row);
+                    list_row.show();
+                }
 
-            let (window_x, window_y) = self.text_view.buffer_to_window_coords(
-                gtk::TextWindowType::Widget,
-                cursor_rect.x(),
-                cursor_rect.y() + cursor_rect.height(),
-            );
+                // Posicionar el popover cerca del cursor
+                let cursor_mark = self.text_buffer.get_insert();
+                let cursor_iter = self.text_buffer.iter_at_mark(&cursor_mark);
+                let cursor_rect = self.text_view.iter_location(&cursor_iter);
 
-            let rect = gtk::gdk::Rectangle::new(window_x, window_y, 1, 1);
-            self.property_completion_popup.set_pointing_to(Some(&rect));
-            self.property_completion_popup.popup();
+                let (window_x, window_y) = self.text_view.buffer_to_window_coords(
+                    gtk::TextWindowType::Widget,
+                    cursor_rect.x(),
+                    cursor_rect.y() + cursor_rect.height(),
+                );
+
+                let rect = gtk::gdk::Rectangle::new(window_x, window_y, 1, 1);
+                self.property_completion_popup.set_pointing_to(Some(&rect));
+                self.property_completion_popup.popup();
             }
             Err(e) => {
                 println!("⚠️ Error getting property values: {}", e);
@@ -15795,7 +15967,7 @@ impl MainApp {
         match self.notes_db.get_all_property_keys() {
             Ok(keys) => {
                 println!("📋 Found {} property keys", keys.len());
-                
+
                 let prefix_lower = prefix.to_lowercase();
                 let matches: Vec<_> = keys
                     .iter()
@@ -15803,8 +15975,8 @@ impl MainApp {
                         if prefix.is_empty() {
                             true
                         } else {
-                            k.to_lowercase().starts_with(&prefix_lower) || 
-                            k.to_lowercase().contains(&prefix_lower)
+                            k.to_lowercase().starts_with(&prefix_lower)
+                                || k.to_lowercase().contains(&prefix_lower)
                         }
                     })
                     .take(10)
@@ -15823,7 +15995,7 @@ impl MainApp {
                 header.add_css_class("dim-label");
                 header.add_css_class("caption");
                 header.set_margin_all(6);
-                
+
                 let header_row = gtk::ListBoxRow::new();
                 header_row.set_child(Some(&header));
                 header_row.set_activatable(false);
@@ -16036,16 +16208,16 @@ impl MainApp {
 
         // Invalidar cache para forzar re-renderizado con nuevos colores
         *self.cached_source_text.borrow_mut() = None;
-        
+
         // Re-aplicar estilos markdown si está habilitado
         if self.markdown_enabled {
             self.sync_to_view();
         }
-        
+
         // Forzar re-renderizado del preview de notas con nuevos colores del tema
         // Esto se hace independientemente del modo actual
         self.render_preview_html();
-        
+
         // Refrescar el tema del WebView de bases de datos
         let is_dark = match self.theme {
             ThemePreference::Light => false,
@@ -16377,7 +16549,7 @@ impl MainApp {
     fn create_new_note(&mut self, name: &str) -> anyhow::Result<()> {
         // Limpiar el nombre: quitar / del inicio y espacios extra
         let clean_name = name.trim().trim_start_matches('/').trim();
-        
+
         // Detectar si solo quiere crear una carpeta (termina en /)
         if clean_name.ends_with('/') {
             let folder_name = clean_name.trim_end_matches('/').trim();
@@ -20671,16 +20843,17 @@ impl MainApp {
             .replace('>', "&gt;");
 
         // Usar regex estático para detectar [[Nombre]]
-        WIKI_LINK_RE.replace_all(&escaped, |caps: &regex::Captures| {
-            let note_name = &caps[1];
-            // Usar el esquema 'note://' para identificar que es un enlace a nota
-            format!(
-                "<a href=\"note://{}\">{}</a>",
-                note_name.replace('"', "&quot;"),
-                note_name
-            )
-        })
-        .to_string()
+        WIKI_LINK_RE
+            .replace_all(&escaped, |caps: &regex::Captures| {
+                let note_name = &caps[1];
+                // Usar el esquema 'note://' para identificar que es un enlace a nota
+                format!(
+                    "<a href=\"note://{}\">{}</a>",
+                    note_name.replace('"', "&quot;"),
+                    note_name
+                )
+            })
+            .to_string()
     }
 
     fn show_about_dialog(&self) {
@@ -20993,12 +21166,15 @@ impl MainApp {
 
         // Actualizar display de TODOs
         self.refresh_todos_summary();
-        
+
         // Actualizar el widget de bases de datos
         drop(i18n); // Liberar borrow antes de actualizar base_table_widget
         self.base_table_widget.borrow_mut().update_language();
 
-        println!("UI actualizada al idioma: {:?}", self.i18n.borrow().current_language());
+        println!(
+            "UI actualizada al idioma: {:?}",
+            self.i18n.borrow().current_language()
+        );
     }
 
     fn create_settings_popover(&self, sender: &ComponentSender<Self>) {
@@ -22819,16 +22995,19 @@ impl MainApp {
     /// Muestra el diálogo con el historial de versiones de una nota
     fn show_note_history_dialog(&self, note_name: &str, sender: &ComponentSender<Self>) {
         let i18n = self.i18n.borrow();
-        
+
         // Buscar archivos de historial para esta nota
         let history_dir = self.notes_dir.root().join(".history");
         let mut versions: Vec<(String, std::time::SystemTime, std::path::PathBuf)> = Vec::new();
-        
+
         // El nombre seguro usa _ en lugar de /
         let safe_name = note_name.replace('/', "_");
-        println!("📜 Buscando historial para '{}' (safe_name: '{}')", note_name, safe_name);
+        println!(
+            "📜 Buscando historial para '{}' (safe_name: '{}')",
+            note_name, safe_name
+        );
         println!("📂 Directorio historial: {:?}", history_dir);
-        
+
         if history_dir.exists() {
             if let Ok(entries) = std::fs::read_dir(&history_dir) {
                 for entry in entries.filter_map(|e| e.ok()) {
@@ -22845,7 +23024,8 @@ impl MainApp {
                                 .and_then(|s| s.strip_suffix(".md"))
                             {
                                 if let Ok(timestamp) = ts_str.parse::<u64>() {
-                                    let time = std::time::UNIX_EPOCH + std::time::Duration::from_secs(timestamp);
+                                    let time = std::time::UNIX_EPOCH
+                                        + std::time::Duration::from_secs(timestamp);
                                     versions.push((filename.to_string(), time, path));
                                 }
                             }
@@ -22856,12 +23036,12 @@ impl MainApp {
         } else {
             println!("⚠️ Directorio de historial no existe");
         }
-        
+
         println!("📜 Encontradas {} versiones", versions.len());
-        
+
         // Ordenar por fecha (más reciente primero)
         versions.sort_by(|a, b| b.1.cmp(&a.1));
-        
+
         // Crear diálogo
         let dialog = gtk::Window::builder()
             .title(&format!("{} - {}", i18n.t("view_history"), note_name))
@@ -22872,7 +23052,7 @@ impl MainApp {
             .resizable(true)
             .build();
         dialog.add_css_class("note-history-dialog");
-        
+
         // Cerrar con ESC
         let key_controller = gtk::EventControllerKey::new();
         let dialog_weak = dialog.downgrade();
@@ -22886,7 +23066,7 @@ impl MainApp {
             gtk::glib::Propagation::Proceed
         });
         dialog.add_controller(key_controller);
-        
+
         let main_box = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .spacing(12)
@@ -22895,7 +23075,7 @@ impl MainApp {
             .margin_start(16)
             .margin_end(16)
             .build();
-        
+
         // Header
         let header = gtk::Label::builder()
             .label(&format!("📜 {} versiones encontradas", versions.len()))
@@ -22903,7 +23083,7 @@ impl MainApp {
             .build();
         header.add_css_class("title-4");
         main_box.append(&header);
-        
+
         if versions.is_empty() {
             let empty_label = gtk::Label::builder()
                 .label("No hay versiones anteriores de esta nota.\n\nEl historial se crea automáticamente\ncuando guardas cambios en una nota.")
@@ -22921,12 +23101,12 @@ impl MainApp {
                 .vscrollbar_policy(gtk::PolicyType::Automatic)
                 .vexpand(true)
                 .build();
-            
+
             let list_box = gtk::ListBox::builder()
                 .selection_mode(gtk::SelectionMode::None)
                 .build();
             list_box.add_css_class("boxed-list");
-            
+
             for (filename, time, path) in versions {
                 let row = gtk::Box::builder()
                     .orientation(gtk::Orientation::Horizontal)
@@ -22936,29 +23116,29 @@ impl MainApp {
                     .margin_start(12)
                     .margin_end(12)
                     .build();
-                
+
                 // Icono
                 let icon = gtk::Image::from_icon_name("document-revert-symbolic");
                 icon.add_css_class("dim-label");
                 row.append(&icon);
-                
+
                 // Info de fecha
                 let info_box = gtk::Box::builder()
                     .orientation(gtk::Orientation::Vertical)
                     .spacing(2)
                     .hexpand(true)
                     .build();
-                
+
                 // Formatear fecha
                 let datetime: chrono::DateTime<chrono::Local> = time.into();
                 let date_str = datetime.format("%d %b %Y, %H:%M").to_string();
-                
+
                 let date_label = gtk::Label::builder()
                     .label(&date_str)
                     .halign(gtk::Align::Start)
                     .build();
                 date_label.add_css_class("heading");
-                
+
                 // Tiempo relativo
                 let now = chrono::Local::now();
                 let duration = now.signed_duration_since(datetime);
@@ -22971,31 +23151,31 @@ impl MainApp {
                 } else {
                     "hace unos segundos".to_string()
                 };
-                
+
                 let relative_label = gtk::Label::builder()
                     .label(&relative)
                     .halign(gtk::Align::Start)
                     .build();
                 relative_label.add_css_class("dim-label");
                 relative_label.add_css_class("caption");
-                
+
                 info_box.append(&date_label);
                 info_box.append(&relative_label);
                 row.append(&info_box);
-                
+
                 // Botones de acción
                 let actions_box = gtk::Box::builder()
                     .orientation(gtk::Orientation::Horizontal)
                     .spacing(4)
                     .build();
-                
+
                 // Botón para ver/previsualizar
                 let view_btn = gtk::Button::new();
                 view_btn.set_icon_name("document-open-symbolic");
                 view_btn.set_tooltip_text(Some("Ver contenido"));
                 view_btn.add_css_class("flat");
                 view_btn.add_css_class("circular");
-                
+
                 let path_clone = path.clone();
                 let note_name_clone = note_name.to_string();
                 let dialog_weak = dialog.downgrade();
@@ -23006,7 +23186,7 @@ impl MainApp {
                     }
                 });
                 actions_box.append(&view_btn);
-                
+
                 // Botón para restaurar
                 let restore_btn = gtk::Button::new();
                 restore_btn.set_icon_name("edit-undo-symbolic");
@@ -23014,7 +23194,7 @@ impl MainApp {
                 restore_btn.add_css_class("flat");
                 restore_btn.add_css_class("circular");
                 restore_btn.add_css_class("suggested-action");
-                
+
                 let sender_clone = sender.clone();
                 let note_name_for_restore = note_name.to_string();
                 let path_str = path.to_string_lossy().to_string();
@@ -23031,22 +23211,22 @@ impl MainApp {
                     }
                 });
                 actions_box.append(&restore_btn);
-                
+
                 row.append(&actions_box);
                 list_box.append(&row);
             }
-            
+
             scrolled.set_child(Some(&list_box));
             main_box.append(&scrolled);
         }
-        
+
         // Botón cerrar
         let close_btn = gtk::Button::builder()
             .label("Cerrar")
             .halign(gtk::Align::End)
             .build();
         close_btn.add_css_class("pill");
-        
+
         let dialog_weak = dialog.downgrade();
         close_btn.connect_clicked(move |_| {
             if let Some(d) = dialog_weak.upgrade() {
@@ -23054,11 +23234,11 @@ impl MainApp {
             }
         });
         main_box.append(&close_btn);
-        
+
         dialog.set_child(Some(&main_box));
         dialog.present();
     }
-    
+
     /// Muestra una vista previa del contenido de un archivo de historial
     fn show_history_preview(parent: &gtk::Window, path: &std::path::Path, note_name: &str) {
         if let Ok(content) = std::fs::read_to_string(path) {
@@ -23069,7 +23249,7 @@ impl MainApp {
                 .default_width(600)
                 .default_height(500)
                 .build();
-            
+
             let main_box = gtk::Box::builder()
                 .orientation(gtk::Orientation::Vertical)
                 .spacing(8)
@@ -23078,14 +23258,14 @@ impl MainApp {
                 .margin_start(12)
                 .margin_end(12)
                 .build();
-            
+
             // Mostrar contenido en un TextView de solo lectura
             let scrolled = gtk::ScrolledWindow::builder()
                 .hscrollbar_policy(gtk::PolicyType::Automatic)
                 .vscrollbar_policy(gtk::PolicyType::Automatic)
                 .vexpand(true)
                 .build();
-            
+
             let text_view = gtk::TextView::builder()
                 .editable(false)
                 .wrap_mode(gtk::WrapMode::Word)
@@ -23097,17 +23277,17 @@ impl MainApp {
                 .build();
             text_view.buffer().set_text(&content);
             text_view.add_css_class("view");
-            
+
             scrolled.set_child(Some(&text_view));
             main_box.append(&scrolled);
-            
+
             // Botón cerrar
             let close_btn = gtk::Button::builder()
                 .label("Cerrar")
                 .halign(gtk::Align::End)
                 .build();
             close_btn.add_css_class("pill");
-            
+
             let dialog_weak = preview_dialog.downgrade();
             close_btn.connect_clicked(move |_| {
                 if let Some(d) = dialog_weak.upgrade() {
@@ -23115,21 +23295,21 @@ impl MainApp {
                 }
             });
             main_box.append(&close_btn);
-            
+
             preview_dialog.set_child(Some(&main_box));
             preview_dialog.present();
         }
     }
-    
+
     /// Inserta formato markdown en el texto del editor
     fn insert_markdown_format(&mut self, format: MarkdownFormat) {
         // Solo funciona en modo INSERT
         if *self.mode.borrow() != EditorMode::Insert {
             return;
         }
-        
+
         let selection_bounds = self.text_buffer.selection_bounds();
-        
+
         match format {
             MarkdownFormat::Bold => {
                 self.wrap_or_insert_format("**", "**", "texto en negrita", selection_bounds);
@@ -23155,12 +23335,16 @@ impl MainApp {
                     let selected_text = self.text_buffer.text(&start, &end, false);
                     let wrapped = format!("\n```\n{}\n```\n", selected_text);
                     let insert_offset = start.offset();
-                    self.text_buffer.delete(&mut start.clone(), &mut end.clone());
+                    self.text_buffer
+                        .delete(&mut start.clone(), &mut end.clone());
                     let mut insert_iter = self.text_buffer.iter_at_offset(insert_offset);
                     self.text_buffer.insert(&mut insert_iter, &wrapped);
                 } else {
-                    let cursor = self.text_buffer.iter_at_mark(&self.text_buffer.get_insert());
-                    self.text_buffer.insert(&mut cursor.clone(), "\n```\ncódigo\n```\n");
+                    let cursor = self
+                        .text_buffer
+                        .iter_at_mark(&self.text_buffer.get_insert());
+                    self.text_buffer
+                        .insert(&mut cursor.clone(), "\n```\ncódigo\n```\n");
                 }
                 self.has_unsaved_changes = true;
             }
@@ -23171,12 +23355,15 @@ impl MainApp {
                     let link_text = format!("[{}](url)", selected_text);
                     // Guardar offset antes de borrar
                     let insert_offset = start.offset();
-                    self.text_buffer.delete(&mut start.clone(), &mut end.clone());
+                    self.text_buffer
+                        .delete(&mut start.clone(), &mut end.clone());
                     // Obtener iterador fresco en la posición correcta
                     let mut insert_iter = self.text_buffer.iter_at_offset(insert_offset);
                     self.text_buffer.insert(&mut insert_iter, &link_text);
                 } else {
-                    let cursor = self.text_buffer.iter_at_mark(&self.text_buffer.get_insert());
+                    let cursor = self
+                        .text_buffer
+                        .iter_at_mark(&self.text_buffer.get_insert());
                     self.text_buffer.insert(&mut cursor.clone(), "[texto](url)");
                 }
                 self.has_unsaved_changes = true;
@@ -23192,7 +23379,9 @@ impl MainApp {
             }
             MarkdownFormat::Table => {
                 let table_template = "\n| Columna 1 | Columna 2 | Columna 3 |\n|-----------|-----------|------------|\n| celda 1   | celda 2   | celda 3   |\n";
-                let cursor = self.text_buffer.iter_at_mark(&self.text_buffer.get_insert());
+                let cursor = self
+                    .text_buffer
+                    .iter_at_mark(&self.text_buffer.get_insert());
                 self.text_buffer.insert(&mut cursor.clone(), table_template);
                 self.has_unsaved_changes = true;
             }
@@ -23209,21 +23398,26 @@ impl MainApp {
                 self.insert_at_line_start("> ");
             }
             MarkdownFormat::HorizontalRule => {
-                let cursor = self.text_buffer.iter_at_mark(&self.text_buffer.get_insert());
+                let cursor = self
+                    .text_buffer
+                    .iter_at_mark(&self.text_buffer.get_insert());
                 self.text_buffer.insert(&mut cursor.clone(), "\n---\n");
                 self.has_unsaved_changes = true;
             }
             MarkdownFormat::Property => {
-                let cursor = self.text_buffer.iter_at_mark(&self.text_buffer.get_insert());
-                self.text_buffer.insert(&mut cursor.clone(), "[campo::valor]");
+                let cursor = self
+                    .text_buffer
+                    .iter_at_mark(&self.text_buffer.get_insert());
+                self.text_buffer
+                    .insert(&mut cursor.clone(), "[campo::valor]");
                 self.has_unsaved_changes = true;
             }
         }
-        
+
         // No necesitamos sincronizar manualmente - el sistema de señales
         // GtkInsertText ya se encarga de mantener el buffer interno sincronizado
     }
-    
+
     /// Envuelve la selección con el formato o inserta placeholder
     fn wrap_or_insert_format(
         &mut self,
@@ -23238,18 +23432,23 @@ impl MainApp {
             let wrapped = format!("{}{}{}", prefix, selected_text, suffix);
             // Guardar offset antes de borrar
             let insert_offset = start.offset();
-            self.text_buffer.delete(&mut start.clone(), &mut end.clone());
+            self.text_buffer
+                .delete(&mut start.clone(), &mut end.clone());
             // Obtener iterador fresco en la posición correcta
             let mut insert_iter = self.text_buffer.iter_at_offset(insert_offset);
             self.text_buffer.insert(&mut insert_iter, &wrapped);
         } else {
             // Insertar placeholder con el formato
-            let cursor = self.text_buffer.iter_at_mark(&self.text_buffer.get_insert());
+            let cursor = self
+                .text_buffer
+                .iter_at_mark(&self.text_buffer.get_insert());
             let text = format!("{}{}{}", prefix, placeholder, suffix);
             self.text_buffer.insert(&mut cursor.clone(), &text);
-            
+
             // Seleccionar el placeholder para facilitar reemplazo
-            let cursor_after = self.text_buffer.iter_at_mark(&self.text_buffer.get_insert());
+            let cursor_after = self
+                .text_buffer
+                .iter_at_mark(&self.text_buffer.get_insert());
             let mut select_start = cursor_after.clone();
             let mut select_end = cursor_after.clone();
             select_start.backward_chars((suffix.len() + placeholder.len()) as i32);
@@ -23258,10 +23457,12 @@ impl MainApp {
         }
         self.has_unsaved_changes = true;
     }
-    
+
     /// Inserta texto al inicio de la línea actual
     fn insert_at_line_start(&mut self, text: &str) {
-        let cursor = self.text_buffer.iter_at_mark(&self.text_buffer.get_insert());
+        let cursor = self
+            .text_buffer
+            .iter_at_mark(&self.text_buffer.get_insert());
         let mut line_start = cursor.clone();
         line_start.set_line_offset(0);
         self.text_buffer.insert(&mut line_start, text);

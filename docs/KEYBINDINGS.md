@@ -126,7 +126,8 @@ Navegación y comandos rápidos sin editar texto.
 ### Gestión
 | Tecla | Acción |
 |-------|--------|
-| `t` | Abrir barra lateral (Sidebar) |
+| `t` | Abrir barra lateral de Notas (Sidebar) |
+| `b` | Abrir barra lateral de Bases de datos |
 | `Esc` | Cerrar barra lateral (si está abierta) |
 | `Ctrl + s` | Guardar nota |
 | `Ctrl + z` | Deshacer |
@@ -174,14 +175,23 @@ Interacción con el asistente de inteligencia artificial.
 ---
 
 ## 📂 Barra Lateral (Sidebar) y Listas
-Navegación por la lista de notas.
+Navegación por la lista de notas y bases de datos.
 
+### Panel de Notas (tecla `t`)
 | Tecla | Acción |
 |-------|--------|
-| `j` / `↓` | Siguiente nota |
-| `k` / `↑` | Nota anterior |
+| `j` / `↓` | Siguiente nota (carga al navegar) |
+| `k` / `↑` | Nota anterior (carga al navegar) |
 | `Enter` | Abrir nota o carpeta seleccionada |
 | `Esc` | Devolver foco al editor |
+
+### Panel de Bases de Datos (tecla `b`)
+| Tecla | Acción |
+|-------|--------|
+| `j` / `↓` | Siguiente base (carga al navegar) |
+| `k` / `↑` | Base anterior (carga al navegar) |
+| `Enter` | Abrir base seleccionada |
+| `l` / `→` / `Esc` | Cerrar sidebar y volver al editor |
 
 ---
 

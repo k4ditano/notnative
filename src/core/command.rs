@@ -49,6 +49,7 @@ pub enum EditorAction {
 
     /// Sidebar
     OpenSidebar,
+    OpenBasesSidebar,
     CloseSidebar,
 
     /// Crear nueva nota
@@ -94,6 +95,7 @@ impl CommandParser {
             ":" => EditorAction::ChangeMode(EditorMode::Command),
             "v" => EditorAction::ChangeMode(EditorMode::Visual),
             "t" => EditorAction::OpenSidebar,
+            "b" => EditorAction::OpenBasesSidebar,
             "n" => EditorAction::CreateNote,
 
             // Movimientos básicos (vim-style)

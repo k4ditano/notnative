@@ -1,5 +1,5 @@
 //! Sistema de fórmulas tipo Excel para Bases
-//! 
+//!
 //! Soporta:
 //! - Referencias de celdas: A1, B2, AA1
 //! - Rangos: A1:C10, B:B (columna entera)
@@ -29,7 +29,7 @@ impl CellRef {
     /// Parsear una referencia de celda desde string (ej: "A1", "BC42")
     pub fn parse(s: &str) -> Option<Self> {
         let s = s.trim().to_uppercase();
-        
+
         // Encontrar dónde terminan las letras y empiezan los números
         let mut col_end = 0;
         for (i, c) in s.char_indices() {
@@ -39,26 +39,26 @@ impl CellRef {
                 break;
             }
         }
-        
+
         if col_end == 0 || col_end >= s.len() {
             return None;
         }
-        
+
         let col_str = &s[..col_end];
         let row_str = &s[col_end..];
-        
+
         let col = col_from_letters(col_str)?;
         let row: u32 = row_str.parse().ok()?;
-        
+
         if row == 0 {
             return None; // Filas empiezan en 1
         }
-        
+
         Some(Self { col, row })
     }
 
     /// Convertir a string (ej: "A1", "BC42")
-    pub fn to_string(&self) -> String {
+    pub fn as_string(&self) -> String {
         format!("{}{}", col_to_letters(self.col), self.row)
     }
 }
@@ -86,30 +86,32 @@ impl CellRange {
     /// Parsear un rango desde string
     pub fn parse(s: &str) -> Option<Self> {
         let s = s.trim().to_uppercase();
-        
+
         if let Some(colon_pos) = s.find(':') {
             let left = &s[..colon_pos];
             let right = &s[colon_pos + 1..];
-            
+
             // Columna entera (B:B)
-            if left.chars().all(|c| c.is_ascii_alphabetic()) && right.chars().all(|c| c.is_ascii_alphabetic()) {
+            if left.chars().all(|c| c.is_ascii_alphabetic())
+                && right.chars().all(|c| c.is_ascii_alphabetic())
+            {
                 let col = col_from_letters(left)?;
                 return Some(CellRange::Column { col });
             }
-            
+
             // Fila entera (3:3)
             if let (Ok(row1), Ok(row2)) = (left.parse::<u32>(), right.parse::<u32>()) {
                 if row1 == row2 {
                     return Some(CellRange::Row { row: row1 });
                 }
             }
-            
+
             // Rango rectangular (A1:C10)
             let start = CellRef::parse(left)?;
             let end = CellRef::parse(right)?;
             return Some(CellRange::Range { start, end });
         }
-        
+
         // Celda individual
         CellRef::parse(&s).map(CellRange::Single)
     }
@@ -124,7 +126,7 @@ impl CellRange {
                 let col_end = start.col.max(end.col);
                 let row_start = start.row.min(end.row);
                 let row_end = start.row.max(end.row);
-                
+
                 for col in col_start..=col_end {
                     for row in row_start..=row_end {
                         cells.push(CellRef::new(col, row));
@@ -147,21 +149,21 @@ impl CellRange {
 pub fn col_to_letters(col: u16) -> String {
     let mut result = String::new();
     let mut n = col as i32 + 1; // 1-indexed para el cálculo
-    
+
     while n > 0 {
         n -= 1;
         let remainder = (n % 26) as u8;
         result.insert(0, (b'A' + remainder) as char);
         n /= 26;
     }
-    
+
     result
 }
 
 /// Convertir letras a índice de columna (A = 0, Z = 25, AA = 26, ...)
 pub fn col_from_letters(s: &str) -> Option<u16> {
     let mut result: u32 = 0;
-    
+
     for c in s.chars() {
         if !c.is_ascii_alphabetic() {
             return None;
@@ -169,11 +171,11 @@ pub fn col_from_letters(s: &str) -> Option<u16> {
         let val = (c.to_ascii_uppercase() as u32) - ('A' as u32) + 1;
         result = result * 26 + val;
     }
-    
+
     if result == 0 {
         return None;
     }
-    
+
     Some((result - 1) as u16)
 }
 
@@ -209,33 +211,36 @@ pub fn tokenize(formula: &str) -> Result<Vec<Token>, FormulaError> {
     let mut tokens = Vec::new();
     let chars: Vec<char> = formula.chars().collect();
     let mut i = 0;
-    
+
     // Saltar el '=' inicial si existe
     if chars.first() == Some(&'=') {
         i = 1;
     }
-    
+
     while i < chars.len() {
         let c = chars[i];
-        
+
         // Espacios
         if c.is_whitespace() {
             i += 1;
             continue;
         }
-        
+
         // Números
-        if c.is_ascii_digit() || (c == '.' && i + 1 < chars.len() && chars[i + 1].is_ascii_digit()) {
+        if c.is_ascii_digit() || (c == '.' && i + 1 < chars.len() && chars[i + 1].is_ascii_digit())
+        {
             let start = i;
             while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.') {
                 i += 1;
             }
             let num_str: String = chars[start..i].iter().collect();
-            let num: f64 = num_str.parse().map_err(|_| FormulaError::InvalidNumber(num_str))?;
+            let num: f64 = num_str
+                .parse()
+                .map_err(|_| FormulaError::InvalidNumber(num_str))?;
             tokens.push(Token::Number(num));
             continue;
         }
-        
+
         // Strings entre comillas
         if c == '"' {
             i += 1;
@@ -250,19 +255,21 @@ pub fn tokenize(formula: &str) -> Result<Vec<Token>, FormulaError> {
             }
             continue;
         }
-        
+
         // Identificadores (funciones o referencias de celda)
         if c.is_ascii_alphabetic() {
             let start = i;
-            while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == ':' || chars[i] == '$') {
+            while i < chars.len()
+                && (chars[i].is_ascii_alphanumeric() || chars[i] == ':' || chars[i] == '$')
+            {
                 i += 1;
             }
             let ident: String = chars[start..i].iter().collect();
             let ident_upper = ident.to_uppercase();
-            
+
             // ¿Es una función? (seguida de paréntesis)
             let is_function = i < chars.len() && chars[i] == '(';
-            
+
             if is_function {
                 tokens.push(Token::Function(ident_upper));
             } else if let Some(range) = CellRange::parse(&ident_upper) {
@@ -275,7 +282,7 @@ pub fn tokenize(formula: &str) -> Result<Vec<Token>, FormulaError> {
             }
             continue;
         }
-        
+
         // Operadores
         match c {
             '+' => tokens.push(Token::Plus),
@@ -309,7 +316,7 @@ pub fn tokenize(formula: &str) -> Result<Vec<Token>, FormulaError> {
         }
         i += 1;
     }
-    
+
     Ok(tokens)
 }
 
@@ -501,7 +508,7 @@ impl Parser {
         // Parsear argumentos
         if self.peek() != Some(&Token::RParen) {
             args.push(self.parse_comparison()?);
-            
+
             while let Some(Token::Comma) = self.peek() {
                 self.advance();
                 args.push(self.parse_comparison()?);
@@ -634,9 +641,18 @@ impl CellGrid {
         }
     }
 
-    fn eval_binary_op(&self, op: BinaryOp, left: CellValue, right: CellValue) -> Result<CellValue, FormulaError> {
-        let l = left.as_number().ok_or(FormulaError::TypeMismatch("Left operand not a number".to_string()))?;
-        let r = right.as_number().ok_or(FormulaError::TypeMismatch("Right operand not a number".to_string()))?;
+    fn eval_binary_op(
+        &self,
+        op: BinaryOp,
+        left: CellValue,
+        right: CellValue,
+    ) -> Result<CellValue, FormulaError> {
+        let l = left.as_number().ok_or(FormulaError::TypeMismatch(
+            "Left operand not a number".to_string(),
+        ))?;
+        let r = right.as_number().ok_or(FormulaError::TypeMismatch(
+            "Right operand not a number".to_string(),
+        ))?;
 
         let result = match op {
             BinaryOp::Add => l + r,
@@ -648,12 +664,48 @@ impl CellGrid {
                 }
                 l / r
             }
-            BinaryOp::Eq => if (l - r).abs() < f64::EPSILON { 1.0 } else { 0.0 },
-            BinaryOp::Ne => if (l - r).abs() >= f64::EPSILON { 1.0 } else { 0.0 },
-            BinaryOp::Gt => if l > r { 1.0 } else { 0.0 },
-            BinaryOp::Ge => if l >= r { 1.0 } else { 0.0 },
-            BinaryOp::Lt => if l < r { 1.0 } else { 0.0 },
-            BinaryOp::Le => if l <= r { 1.0 } else { 0.0 },
+            BinaryOp::Eq => {
+                if (l - r).abs() < f64::EPSILON {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            BinaryOp::Ne => {
+                if (l - r).abs() >= f64::EPSILON {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            BinaryOp::Gt => {
+                if l > r {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            BinaryOp::Ge => {
+                if l >= r {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            BinaryOp::Lt => {
+                if l < r {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            BinaryOp::Le => {
+                if l <= r {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
         };
 
         Ok(CellValue::Number(result))
@@ -663,7 +715,11 @@ impl CellGrid {
         match name {
             "SUM" => self.eval_aggregate(args, |vals| vals.iter().sum()),
             "AVG" | "AVERAGE" => self.eval_aggregate(args, |vals| {
-                if vals.is_empty() { 0.0 } else { vals.iter().sum::<f64>() / vals.len() as f64 }
+                if vals.is_empty() {
+                    0.0
+                } else {
+                    vals.iter().sum::<f64>() / vals.len() as f64
+                }
             }),
             "MIN" => self.eval_aggregate(args, |vals| {
                 vals.iter().cloned().fold(f64::INFINITY, f64::min)
@@ -672,7 +728,7 @@ impl CellGrid {
                 vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
             }),
             "COUNT" => self.eval_count(args),
-            "COUNTA" => self.eval_counta(args),  // Contar celdas no vacías
+            "COUNTA" => self.eval_counta(args), // Contar celdas no vacías
             "IF" => {
                 if args.len() != 3 {
                     return Err(FormulaError::WrongArgCount("IF".to_string(), 3, args.len()));
@@ -686,20 +742,34 @@ impl CellGrid {
             }
             "ABS" => {
                 if args.len() != 1 {
-                    return Err(FormulaError::WrongArgCount("ABS".to_string(), 1, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "ABS".to_string(),
+                        1,
+                        args.len(),
+                    ));
                 }
                 let val = self.eval_expr(&args[0])?;
                 match val.as_number() {
                     Some(n) => Ok(CellValue::Number(n.abs())),
-                    None => Err(FormulaError::TypeMismatch("ABS requires number".to_string())),
+                    None => Err(FormulaError::TypeMismatch(
+                        "ABS requires number".to_string(),
+                    )),
                 }
             }
             "ROUND" => {
                 if args.len() < 1 || args.len() > 2 {
-                    return Err(FormulaError::WrongArgCount("ROUND".to_string(), 1, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "ROUND".to_string(),
+                        1,
+                        args.len(),
+                    ));
                 }
-                let val = self.eval_expr(&args[0])?.as_number()
-                    .ok_or(FormulaError::TypeMismatch("ROUND requires number".to_string()))?;
+                let val =
+                    self.eval_expr(&args[0])?
+                        .as_number()
+                        .ok_or(FormulaError::TypeMismatch(
+                            "ROUND requires number".to_string(),
+                        ))?;
                 let decimals = if args.len() == 2 {
                     self.eval_expr(&args[1])?.as_number().unwrap_or(0.0) as i32
                 } else {
@@ -719,35 +789,55 @@ impl CellGrid {
             }
             "UPPER" => {
                 if args.len() != 1 {
-                    return Err(FormulaError::WrongArgCount("UPPER".to_string(), 1, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "UPPER".to_string(),
+                        1,
+                        args.len(),
+                    ));
                 }
                 let val = self.eval_expr(&args[0])?;
                 Ok(CellValue::Text(val.to_string().to_uppercase()))
             }
             "LOWER" => {
                 if args.len() != 1 {
-                    return Err(FormulaError::WrongArgCount("LOWER".to_string(), 1, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "LOWER".to_string(),
+                        1,
+                        args.len(),
+                    ));
                 }
                 let val = self.eval_expr(&args[0])?;
                 Ok(CellValue::Text(val.to_string().to_lowercase()))
             }
             "TRIM" => {
                 if args.len() != 1 {
-                    return Err(FormulaError::WrongArgCount("TRIM".to_string(), 1, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "TRIM".to_string(),
+                        1,
+                        args.len(),
+                    ));
                 }
                 let val = self.eval_expr(&args[0])?;
                 Ok(CellValue::Text(val.to_string().trim().to_string()))
             }
             "LEN" => {
                 if args.len() != 1 {
-                    return Err(FormulaError::WrongArgCount("LEN".to_string(), 1, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "LEN".to_string(),
+                        1,
+                        args.len(),
+                    ));
                 }
                 let val = self.eval_expr(&args[0])?;
                 Ok(CellValue::Number(val.to_string().chars().count() as f64))
             }
             "LEFT" => {
                 if args.len() < 1 || args.len() > 2 {
-                    return Err(FormulaError::WrongArgCount("LEFT".to_string(), 2, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "LEFT".to_string(),
+                        2,
+                        args.len(),
+                    ));
                 }
                 let text = self.eval_expr(&args[0])?.to_string();
                 let num = if args.len() == 2 {
@@ -759,7 +849,11 @@ impl CellGrid {
             }
             "RIGHT" => {
                 if args.len() < 1 || args.len() > 2 {
-                    return Err(FormulaError::WrongArgCount("RIGHT".to_string(), 2, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "RIGHT".to_string(),
+                        2,
+                        args.len(),
+                    ));
                 }
                 let text = self.eval_expr(&args[0])?.to_string();
                 let num = if args.len() == 2 {
@@ -773,7 +867,11 @@ impl CellGrid {
             }
             "MID" => {
                 if args.len() != 3 {
-                    return Err(FormulaError::WrongArgCount("MID".to_string(), 3, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "MID".to_string(),
+                        3,
+                        args.len(),
+                    ));
                 }
                 let text = self.eval_expr(&args[0])?.to_string();
                 let start = self.eval_expr(&args[1])?.as_number().unwrap_or(1.0) as usize;
@@ -786,7 +884,11 @@ impl CellGrid {
             }
             "REPLACE" => {
                 if args.len() != 4 {
-                    return Err(FormulaError::WrongArgCount("REPLACE".to_string(), 4, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "REPLACE".to_string(),
+                        4,
+                        args.len(),
+                    ));
                 }
                 let text = self.eval_expr(&args[0])?.to_string();
                 let start = self.eval_expr(&args[1])?.as_number().unwrap_or(1.0) as usize;
@@ -802,12 +904,16 @@ impl CellGrid {
             }
             "SUBSTITUTE" => {
                 if args.len() < 3 || args.len() > 4 {
-                    return Err(FormulaError::WrongArgCount("SUBSTITUTE".to_string(), 3, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "SUBSTITUTE".to_string(),
+                        3,
+                        args.len(),
+                    ));
                 }
                 let text = self.eval_expr(&args[0])?.to_string();
                 let old_text = self.eval_expr(&args[1])?.to_string();
                 let new_text = self.eval_expr(&args[2])?.to_string();
-                
+
                 if args.len() == 4 {
                     // Reemplazar solo la n-ésima ocurrencia
                     let instance = self.eval_expr(&args[3])?.as_number().unwrap_or(1.0) as usize;
@@ -837,11 +943,15 @@ impl CellGrid {
             "TEXT" => {
                 // Formato simple: TEXT(valor, formato) - por ahora solo número de decimales
                 if args.len() != 2 {
-                    return Err(FormulaError::WrongArgCount("TEXT".to_string(), 2, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "TEXT".to_string(),
+                        2,
+                        args.len(),
+                    ));
                 }
                 let val = self.eval_expr(&args[0])?;
                 let format = self.eval_expr(&args[1])?.to_string();
-                
+
                 if let Some(n) = val.as_number() {
                     // Contar decimales en el formato (ej: "0.00" = 2 decimales)
                     let decimals = format.split('.').nth(1).map(|s| s.len()).unwrap_or(0);
@@ -852,7 +962,11 @@ impl CellGrid {
             }
             "REPT" => {
                 if args.len() != 2 {
-                    return Err(FormulaError::WrongArgCount("REPT".to_string(), 2, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "REPT".to_string(),
+                        2,
+                        args.len(),
+                    ));
                 }
                 let text = self.eval_expr(&args[0])?.to_string();
                 let times = self.eval_expr(&args[1])?.as_number().unwrap_or(1.0) as usize;
@@ -871,7 +985,11 @@ impl CellGrid {
             }
             "YEAR" => {
                 if args.len() != 1 {
-                    return Err(FormulaError::WrongArgCount("YEAR".to_string(), 1, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "YEAR".to_string(),
+                        1,
+                        args.len(),
+                    ));
                 }
                 let date_str = self.eval_expr(&args[0])?.to_string();
                 if let Some(year) = Self::parse_date_component(&date_str, "year") {
@@ -882,7 +1000,11 @@ impl CellGrid {
             }
             "MONTH" => {
                 if args.len() != 1 {
-                    return Err(FormulaError::WrongArgCount("MONTH".to_string(), 1, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "MONTH".to_string(),
+                        1,
+                        args.len(),
+                    ));
                 }
                 let date_str = self.eval_expr(&args[0])?.to_string();
                 if let Some(month) = Self::parse_date_component(&date_str, "month") {
@@ -893,7 +1015,11 @@ impl CellGrid {
             }
             "DAY" => {
                 if args.len() != 1 {
-                    return Err(FormulaError::WrongArgCount("DAY".to_string(), 1, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "DAY".to_string(),
+                        1,
+                        args.len(),
+                    ));
                 }
                 let date_str = self.eval_expr(&args[0])?.to_string();
                 if let Some(day) = Self::parse_date_component(&date_str, "day") {
@@ -904,7 +1030,11 @@ impl CellGrid {
             }
             "HOUR" => {
                 if args.len() != 1 {
-                    return Err(FormulaError::WrongArgCount("HOUR".to_string(), 1, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "HOUR".to_string(),
+                        1,
+                        args.len(),
+                    ));
                 }
                 let date_str = self.eval_expr(&args[0])?.to_string();
                 if let Some(hour) = Self::parse_date_component(&date_str, "hour") {
@@ -915,7 +1045,11 @@ impl CellGrid {
             }
             "MINUTE" => {
                 if args.len() != 1 {
-                    return Err(FormulaError::WrongArgCount("MINUTE".to_string(), 1, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "MINUTE".to_string(),
+                        1,
+                        args.len(),
+                    ));
                 }
                 let date_str = self.eval_expr(&args[0])?.to_string();
                 if let Some(min) = Self::parse_date_component(&date_str, "minute") {
@@ -927,7 +1061,11 @@ impl CellGrid {
             "WEEKDAY" => {
                 // 1=Lunes ... 7=Domingo (ISO)
                 if args.len() != 1 {
-                    return Err(FormulaError::WrongArgCount("WEEKDAY".to_string(), 1, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "WEEKDAY".to_string(),
+                        1,
+                        args.len(),
+                    ));
                 }
                 let date_str = self.eval_expr(&args[0])?.to_string();
                 if let Some(wd) = Self::parse_date_component(&date_str, "weekday") {
@@ -939,7 +1077,11 @@ impl CellGrid {
             "WEEKNUM" => {
                 // Número de semana del año
                 if args.len() != 1 {
-                    return Err(FormulaError::WrongArgCount("WEEKNUM".to_string(), 1, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "WEEKNUM".to_string(),
+                        1,
+                        args.len(),
+                    ));
                 }
                 let date_str = self.eval_expr(&args[0])?.to_string();
                 if let Some(wn) = Self::parse_date_component(&date_str, "weeknum") {
@@ -951,13 +1093,19 @@ impl CellGrid {
             "DATEDIF" => {
                 // Diferencia entre dos fechas
                 if args.len() != 3 {
-                    return Err(FormulaError::WrongArgCount("DATEDIF".to_string(), 3, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "DATEDIF".to_string(),
+                        3,
+                        args.len(),
+                    ));
                 }
                 let date1_str = self.eval_expr(&args[0])?.to_string();
                 let date2_str = self.eval_expr(&args[1])?.to_string();
                 let unit = self.eval_expr(&args[2])?.to_string().to_uppercase();
-                
-                if let (Some(d1), Some(d2)) = (Self::parse_date(&date1_str), Self::parse_date(&date2_str)) {
+
+                if let (Some(d1), Some(d2)) =
+                    (Self::parse_date(&date1_str), Self::parse_date(&date2_str))
+                {
                     let diff = d2.signed_duration_since(d1);
                     let result = match unit.as_str() {
                         "D" => diff.num_days() as f64,
@@ -974,11 +1122,15 @@ impl CellGrid {
             "DATEFORMAT" => {
                 // Formatear fecha: DATEFORMAT(fecha, "formato")
                 if args.len() != 2 {
-                    return Err(FormulaError::WrongArgCount("DATEFORMAT".to_string(), 2, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "DATEFORMAT".to_string(),
+                        2,
+                        args.len(),
+                    ));
                 }
                 let date_str = self.eval_expr(&args[0])?.to_string();
                 let format = self.eval_expr(&args[1])?.to_string();
-                
+
                 if let Some(dt) = Self::parse_datetime(&date_str) {
                     // Convertir formato tipo Excel a chrono
                     let chrono_fmt = format
@@ -999,7 +1151,11 @@ impl CellGrid {
             "EOMONTH" => {
                 // Último día del mes (con offset de meses)
                 if args.len() < 1 || args.len() > 2 {
-                    return Err(FormulaError::WrongArgCount("EOMONTH".to_string(), 2, args.len()));
+                    return Err(FormulaError::WrongArgCount(
+                        "EOMONTH".to_string(),
+                        2,
+                        args.len(),
+                    ));
                 }
                 let date_str = self.eval_expr(&args[0])?.to_string();
                 let months_offset = if args.len() == 2 {
@@ -1007,20 +1163,24 @@ impl CellGrid {
                 } else {
                     0
                 };
-                
+
                 if let Some(dt) = Self::parse_date(&date_str) {
                     use chrono::{Datelike, NaiveDate};
                     let year = dt.year();
                     let month = dt.month() as i32;
-                    
+
                     // Calcular nuevo mes/año con offset
                     let total_months = year * 12 + month - 1 + months_offset;
                     let new_year = total_months / 12;
                     let new_month = (total_months % 12 + 1) as u32;
-                    
+
                     // Obtener último día del mes
                     let next_month = if new_month == 12 { 1 } else { new_month + 1 };
-                    let next_year = if new_month == 12 { new_year + 1 } else { new_year };
+                    let next_year = if new_month == 12 {
+                        new_year + 1
+                    } else {
+                        new_year
+                    };
                     if let Some(first_of_next) = NaiveDate::from_ymd_opt(next_year, next_month, 1) {
                         let last_day = first_of_next.pred_opt().unwrap_or(first_of_next);
                         Ok(CellValue::Text(last_day.format("%Y-%m-%d").to_string()))
@@ -1066,7 +1226,7 @@ impl CellGrid {
 
         Ok(CellValue::Number(f(&values)))
     }
-    
+
     /// COUNT - Cuenta celdas con números
     fn eval_count(&self, args: &[Expr]) -> Result<CellValue, FormulaError> {
         let mut count = 0;
@@ -1098,7 +1258,7 @@ impl CellGrid {
 
         Ok(CellValue::Number(count as f64))
     }
-    
+
     /// COUNTA - Cuenta celdas no vacías
     fn eval_counta(&self, args: &[Expr]) -> Result<CellValue, FormulaError> {
         let mut count = 0;
@@ -1130,27 +1290,27 @@ impl CellGrid {
 
         Ok(CellValue::Number(count as f64))
     }
-    
+
     // === Funciones auxiliares para fechas ===
-    
+
     /// Parsear fecha en varios formatos comunes
     fn parse_date(s: &str) -> Option<chrono::NaiveDate> {
         use chrono::NaiveDate;
         let s = s.trim();
-        
+
         // Intentar varios formatos
         let formats = [
-            "%Y-%m-%d",        // 2024-12-01
-            "%d/%m/%Y",        // 01/12/2024
-            "%m/%d/%Y",        // 12/01/2024
-            "%Y/%m/%d",        // 2024/12/01
-            "%d-%m-%Y",        // 01-12-2024
-            "%Y-%m-%d %H:%M",  // 2024-12-01 10:30
-            "%Y-%m-%d %H:%M:%S", // 2024-12-01 10:30:45
-            "%Y-%m-%dT%H:%M:%S", // ISO 8601
+            "%Y-%m-%d",             // 2024-12-01
+            "%d/%m/%Y",             // 01/12/2024
+            "%m/%d/%Y",             // 12/01/2024
+            "%Y/%m/%d",             // 2024/12/01
+            "%d-%m-%Y",             // 01-12-2024
+            "%Y-%m-%d %H:%M",       // 2024-12-01 10:30
+            "%Y-%m-%d %H:%M:%S",    // 2024-12-01 10:30:45
+            "%Y-%m-%dT%H:%M:%S",    // ISO 8601
             "%Y-%m-%dT%H:%M:%S%.f", // ISO 8601 con milisegundos
         ];
-        
+
         for fmt in &formats {
             // Intentar como fecha sola
             if let Ok(d) = NaiveDate::parse_from_str(s, fmt) {
@@ -1161,7 +1321,7 @@ impl CellGrid {
                 return Some(dt.date());
             }
         }
-        
+
         // Intentar extraer solo la parte de fecha si hay espacio
         if let Some(date_part) = s.split_whitespace().next() {
             for fmt in &["%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y"] {
@@ -1170,15 +1330,15 @@ impl CellGrid {
                 }
             }
         }
-        
+
         None
     }
-    
+
     /// Parsear datetime completo
     fn parse_datetime(s: &str) -> Option<chrono::NaiveDateTime> {
         use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
         let s = s.trim();
-        
+
         let formats = [
             "%Y-%m-%d %H:%M:%S",
             "%Y-%m-%d %H:%M",
@@ -1187,25 +1347,25 @@ impl CellGrid {
             "%d/%m/%Y %H:%M:%S",
             "%d/%m/%Y %H:%M",
         ];
-        
+
         for fmt in &formats {
             if let Ok(dt) = NaiveDateTime::parse_from_str(s, fmt) {
                 return Some(dt);
             }
         }
-        
+
         // Si solo es fecha, agregar 00:00:00
         if let Some(d) = Self::parse_date(s) {
             return Some(NaiveDateTime::new(d, NaiveTime::from_hms_opt(0, 0, 0)?));
         }
-        
+
         None
     }
-    
+
     /// Extraer componente específico de una fecha
     fn parse_date_component(s: &str, component: &str) -> Option<i32> {
         use chrono::{Datelike, Timelike};
-        
+
         // Primero intentar como datetime
         if let Some(dt) = Self::parse_datetime(s) {
             return match component {
@@ -1219,7 +1379,7 @@ impl CellGrid {
                 _ => None,
             };
         }
-        
+
         // Luego intentar solo como fecha
         if let Some(d) = Self::parse_date(s) {
             return match component {
@@ -1231,7 +1391,7 @@ impl CellGrid {
                 _ => None,
             };
         }
-        
+
         None
     }
 }
@@ -1333,17 +1493,17 @@ mod tests {
     #[test]
     fn test_simple_formulas() {
         let grid = CellGrid::new();
-        
+
         assert!(matches!(
             grid.evaluate("=1+2"),
             Ok(CellValue::Number(n)) if (n - 3.0).abs() < f64::EPSILON
         ));
-        
+
         assert!(matches!(
             grid.evaluate("=10/2"),
             Ok(CellValue::Number(n)) if (n - 5.0).abs() < f64::EPSILON
         ));
-        
+
         assert!(matches!(
             grid.evaluate("=(2+3)*4"),
             Ok(CellValue::Number(n)) if (n - 20.0).abs() < f64::EPSILON
@@ -1355,7 +1515,7 @@ mod tests {
         let mut grid = CellGrid::new();
         grid.set(CellRef::new(0, 1), CellValue::Number(10.0)); // A1
         grid.set(CellRef::new(1, 1), CellValue::Number(20.0)); // B1
-        
+
         assert!(matches!(
             grid.evaluate("=A1+B1"),
             Ok(CellValue::Number(n)) if (n - 30.0).abs() < f64::EPSILON
@@ -1368,7 +1528,7 @@ mod tests {
         grid.set(CellRef::new(0, 1), CellValue::Number(1.0));
         grid.set(CellRef::new(0, 2), CellValue::Number(2.0));
         grid.set(CellRef::new(0, 3), CellValue::Number(3.0));
-        
+
         assert!(matches!(
             grid.evaluate("=SUM(A1:A3)"),
             Ok(CellValue::Number(n)) if (n - 6.0).abs() < f64::EPSILON
@@ -1379,12 +1539,12 @@ mod tests {
     fn test_if_function() {
         let mut grid = CellGrid::new();
         grid.set(CellRef::new(0, 1), CellValue::Number(10.0));
-        
+
         assert!(matches!(
             grid.evaluate("=IF(A1>5, 100, 0)"),
             Ok(CellValue::Number(n)) if (n - 100.0).abs() < f64::EPSILON
         ));
-        
+
         assert!(matches!(
             grid.evaluate("=IF(A1<5, 100, 0)"),
             Ok(CellValue::Number(n)) if n.abs() < f64::EPSILON

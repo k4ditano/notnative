@@ -2296,7 +2296,9 @@ impl MCPToolExecutor {
                         let props: serde_json::Map<String, serde_json::Value> = note
                             .properties
                             .iter()
-                            .map(|(k, v)| (k.clone(), serde_json::Value::String(v.to_display_string())))
+                            .map(|(k, v)| {
+                                (k.clone(), serde_json::Value::String(v.to_display_string()))
+                            })
                             .collect();
 
                         json!({
@@ -2315,7 +2317,10 @@ impl MCPToolExecutor {
                     "total": notes_json.len()
                 })))
             }
-            None => Ok(MCPToolResult::error(format!("Base '{}' no encontrada", name))),
+            None => Ok(MCPToolResult::error(format!(
+                "Base '{}' no encontrada",
+                name
+            ))),
         }
     }
 
@@ -2350,7 +2355,12 @@ impl MCPToolExecutor {
                     "less_or_equal" => FilterOperator::LessOrEqual,
                     "is_empty" => FilterOperator::IsEmpty,
                     "is_not_empty" => FilterOperator::IsNotEmpty,
-                    _ => return Ok(MCPToolResult::error(format!("Operador '{}' no válido", operator))),
+                    _ => {
+                        return Ok(MCPToolResult::error(format!(
+                            "Operador '{}' no válido",
+                            operator
+                        )));
+                    }
                 };
 
                 // Crear el valor
@@ -2370,7 +2380,9 @@ impl MCPToolExecutor {
 
                 // Añadir filtro a la vista activa
                 if let Some(view) = base.active_view_mut() {
-                    view.filter.filters.push(Filter::new(property, op.clone(), prop_value));
+                    view.filter
+                        .filters
+                        .push(Filter::new(property, op.clone(), prop_value));
                 }
 
                 // Guardar cambios
@@ -2385,7 +2397,10 @@ impl MCPToolExecutor {
                     "value": value
                 })))
             }
-            None => Ok(MCPToolResult::error(format!("Base '{}' no encontrada", base_name))),
+            None => Ok(MCPToolResult::error(format!(
+                "Base '{}' no encontrada",
+                base_name
+            ))),
         }
     }
 
@@ -2425,7 +2440,10 @@ impl MCPToolExecutor {
                     Ok(MCPToolResult::error("No hay vista activa".to_string()))
                 }
             }
-            None => Ok(MCPToolResult::error(format!("Base '{}' no encontrada", base_name))),
+            None => Ok(MCPToolResult::error(format!(
+                "Base '{}' no encontrada",
+                base_name
+            ))),
         }
     }
 
@@ -2464,7 +2482,10 @@ impl MCPToolExecutor {
                     "name": name
                 })))
             }
-            None => Ok(MCPToolResult::error(format!("Base '{}' no encontrada", name))),
+            None => Ok(MCPToolResult::error(format!(
+                "Base '{}' no encontrada",
+                name
+            ))),
         }
     }
 
@@ -2499,7 +2520,10 @@ impl MCPToolExecutor {
                     "views": views_json
                 })))
             }
-            None => Ok(MCPToolResult::error(format!("Base '{}' no encontrada", name))),
+            None => Ok(MCPToolResult::error(format!(
+                "Base '{}' no encontrada",
+                name
+            ))),
         }
     }
 
@@ -2540,7 +2564,10 @@ impl MCPToolExecutor {
                     "type": view_type.unwrap_or("table")
                 })))
             }
-            None => Ok(MCPToolResult::error(format!("Base '{}' no encontrada", base_name))),
+            None => Ok(MCPToolResult::error(format!(
+                "Base '{}' no encontrada",
+                base_name
+            ))),
         }
     }
 
@@ -2570,7 +2597,10 @@ impl MCPToolExecutor {
                     "columns": columns
                 })))
             }
-            None => Ok(MCPToolResult::error(format!("Base '{}' no encontrada", base_name))),
+            None => Ok(MCPToolResult::error(format!(
+                "Base '{}' no encontrada",
+                base_name
+            ))),
         }
     }
 

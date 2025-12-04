@@ -13,19 +13,16 @@ use crate::i18n::Language;
 // ============================================================================
 
 /// Formato V2 español: !!RECORDAR(fecha [prioridad] [repetir=patron], texto)
-static SPANISH_REGEX_V2: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"!!RECORDAR\(([^,]+),\s*(.*?)\)").unwrap()
-});
+static SPANISH_REGEX_V2: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"!!RECORDAR\(([^,]+),\s*(.*?)\)").unwrap());
 
 /// Formato V2 inglés: !!REMIND(date [priority] [repeat=pattern], text)
-static ENGLISH_REGEX_V2: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"!!REMIND\(([^,]+),\s*(.*?)\)").unwrap()
-});
+static ENGLISH_REGEX_V2: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"!!REMIND\(([^,]+),\s*(.*?)\)").unwrap());
 
 /// Formato Interno (Widget): [REMINDER:params|text]
-static INTERNAL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\[REMINDER:(.*?)\|(.*?)\]").unwrap()
-});
+static INTERNAL_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[REMINDER:(.*?)\|(.*?)\]").unwrap());
 
 /// Resultado del parsing de un recordatorio
 #[derive(Debug, Clone)]

@@ -15,23 +15,23 @@ pub struct CellFormat {
     /// Número de decimales para números (None = auto)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub decimals: Option<u8>,
-    
+
     /// Prefijo (ej: "€", "$")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prefix: Option<String>,
-    
+
     /// Sufijo (ej: "%", " kg")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub suffix: Option<String>,
-    
+
     /// Texto en negrita
     #[serde(default)]
     pub bold: bool,
-    
+
     /// Color de texto (CSS color)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
-    
+
     /// Color de fondo (CSS color)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub background: Option<String>,
@@ -41,37 +41,37 @@ impl CellFormat {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     pub fn with_decimals(mut self, decimals: u8) -> Self {
         self.decimals = Some(decimals);
         self
     }
-    
+
     pub fn with_prefix(mut self, prefix: impl Into<String>) -> Self {
         self.prefix = Some(prefix.into());
         self
     }
-    
+
     pub fn with_suffix(mut self, suffix: impl Into<String>) -> Self {
         self.suffix = Some(suffix.into());
         self
     }
-    
+
     pub fn bold(mut self) -> Self {
         self.bold = true;
         self
     }
-    
+
     pub fn with_color(mut self, color: impl Into<String>) -> Self {
         self.color = Some(color.into());
         self
     }
-    
+
     pub fn with_background(mut self, bg: impl Into<String>) -> Self {
         self.background = Some(bg.into());
         self
     }
-    
+
     /// Formatear un valor numérico según el formato
     pub fn format_number(&self, value: f64) -> String {
         let mut result = match self.decimals {
@@ -85,34 +85,34 @@ impl CellFormat {
                 }
             }
         };
-        
+
         if let Some(ref prefix) = self.prefix {
             result = format!("{}{}", prefix, result);
         }
-        
+
         if let Some(ref suffix) = self.suffix {
             result = format!("{}{}", result, suffix);
         }
-        
+
         result
     }
-    
+
     /// Generar CSS inline para la celda
     pub fn to_css(&self) -> String {
         let mut styles = Vec::new();
-        
+
         if self.bold {
             styles.push("font-weight: bold".to_string());
         }
-        
+
         if let Some(ref color) = self.color {
             styles.push(format!("color: {}", color));
         }
-        
+
         if let Some(ref bg) = self.background {
             styles.push(format!("background-color: {}", bg));
         }
-        
+
         styles.join("; ")
     }
 }
@@ -122,7 +122,7 @@ impl CellFormat {
 pub struct SpecialCellContent {
     /// Fórmula (ej: "=SUM(C1:C10)") o texto estático
     pub content: String,
-    
+
     /// Formato de la celda
     #[serde(default)]
     pub format: CellFormat,
@@ -135,19 +135,19 @@ impl SpecialCellContent {
             format: CellFormat::default(),
         }
     }
-    
+
     pub fn text(text: impl Into<String>) -> Self {
         Self {
             content: text.into(),
             format: CellFormat::default(),
         }
     }
-    
+
     pub fn with_format(mut self, format: CellFormat) -> Self {
         self.format = format;
         self
     }
-    
+
     /// ¿Es una fórmula?
     pub fn is_formula(&self) -> bool {
         self.content.starts_with('=')
@@ -159,19 +159,19 @@ impl SpecialCellContent {
 pub struct SpecialRow {
     /// ID único de la fila
     pub id: String,
-    
+
     /// Etiqueta de la fila (primera columna, ej: "Total", "Promedio")
     pub label: String,
-    
+
     /// Contenido de cada columna (clave = nombre de propiedad/columna)
     #[serde(default)]
     pub cells: HashMap<String, SpecialCellContent>,
-    
+
     /// Posición: índice de fila después de la cual insertar (0 = inicio)
     /// None = al final de la tabla
     #[serde(skip_serializing_if = "Option::is_none")]
     pub position: Option<usize>,
-    
+
     /// CSS class adicional para la fila
     #[serde(skip_serializing_if = "Option::is_none")]
     pub css_class: Option<String>,
@@ -187,7 +187,7 @@ impl SpecialRow {
             css_class: None,
         }
     }
-    
+
     /// Crear fila de totales al final
     pub fn totals(label: impl Into<String>) -> Self {
         Self {
@@ -198,19 +198,20 @@ impl SpecialRow {
             css_class: Some("special-row-totals".to_string()),
         }
     }
-    
+
     /// Añadir contenido a una columna
     pub fn with_cell(mut self, column: impl Into<String>, content: SpecialCellContent) -> Self {
         self.cells.insert(column.into(), content);
         self
     }
-    
+
     /// Añadir fórmula a una columna
     pub fn with_formula(mut self, column: impl Into<String>, formula: impl Into<String>) -> Self {
-        self.cells.insert(column.into(), SpecialCellContent::formula(formula));
+        self.cells
+            .insert(column.into(), SpecialCellContent::formula(formula));
         self
     }
-    
+
     /// Establecer posición
     pub fn at_position(mut self, pos: usize) -> Self {
         self.position = Some(pos);
@@ -279,8 +280,12 @@ impl FilterOperator {
             FilterOperator::NotContains => !self.check_contains(property_value, filter_value),
             FilterOperator::StartsWith => self.check_starts_with(property_value, filter_value),
             FilterOperator::EndsWith => self.check_ends_with(property_value, filter_value),
-            FilterOperator::GreaterThan => self.check_greater_than(property_value, filter_value, false),
-            FilterOperator::GreaterOrEqual => self.check_greater_than(property_value, filter_value, true),
+            FilterOperator::GreaterThan => {
+                self.check_greater_than(property_value, filter_value, false)
+            }
+            FilterOperator::GreaterOrEqual => {
+                self.check_greater_than(property_value, filter_value, true)
+            }
             FilterOperator::LessThan => self.check_less_than(property_value, filter_value, false),
             FilterOperator::LessOrEqual => self.check_less_than(property_value, filter_value, true),
             FilterOperator::IsEmpty => property_value.is_empty(),
@@ -290,8 +295,12 @@ impl FilterOperator {
 
     fn check_equals(&self, a: &PropertyValue, b: &PropertyValue) -> bool {
         match (a, b) {
-            (PropertyValue::Text(s1), PropertyValue::Text(s2)) => s1.to_lowercase() == s2.to_lowercase(),
-            (PropertyValue::Number(n1), PropertyValue::Number(n2)) => (n1 - n2).abs() < f64::EPSILON,
+            (PropertyValue::Text(s1), PropertyValue::Text(s2)) => {
+                s1.to_lowercase() == s2.to_lowercase()
+            }
+            (PropertyValue::Number(n1), PropertyValue::Number(n2)) => {
+                (n1 - n2).abs() < f64::EPSILON
+            }
             (PropertyValue::Checkbox(b1), PropertyValue::Checkbox(b2)) => b1 == b2,
             (PropertyValue::Date(d1), PropertyValue::Date(d2)) => d1 == d2,
             (PropertyValue::DateTime(dt1), PropertyValue::DateTime(dt2)) => dt1 == dt2,
@@ -300,7 +309,7 @@ impl FilterOperator {
             (PropertyValue::Tags(tags), PropertyValue::Text(s)) => {
                 let filter_normalized = s.to_lowercase().trim_start_matches('#').to_string();
                 tags.iter().any(|t| t.to_lowercase() == filter_normalized)
-            },
+            }
             (PropertyValue::List(l1), PropertyValue::List(l2)) => l1 == l2,
             (PropertyValue::Null, PropertyValue::Null) => true,
             _ => false,
@@ -309,40 +318,66 @@ impl FilterOperator {
 
     fn check_contains(&self, property: &PropertyValue, filter: &PropertyValue) -> bool {
         let filter_str = filter.to_display_string().to_lowercase();
-        
+
         match property {
             PropertyValue::Text(s) => s.to_lowercase().contains(&filter_str),
-            PropertyValue::List(items) => items.iter().any(|i| i.to_lowercase().contains(&filter_str)),
+            PropertyValue::List(items) => {
+                items.iter().any(|i| i.to_lowercase().contains(&filter_str))
+            }
             PropertyValue::Tags(tags) => {
                 // Para tags, eliminar # del filtro si existe (los tags se guardan sin #)
                 let filter_normalized = filter_str.trim_start_matches('#');
-                tags.iter().any(|t| t.to_lowercase().contains(filter_normalized))
-            },
-            PropertyValue::Links(links) => links.iter().any(|l| l.to_lowercase().contains(&filter_str)),
-            _ => property.to_display_string().to_lowercase().contains(&filter_str),
+                tags.iter()
+                    .any(|t| t.to_lowercase().contains(filter_normalized))
+            }
+            PropertyValue::Links(links) => {
+                links.iter().any(|l| l.to_lowercase().contains(&filter_str))
+            }
+            _ => property
+                .to_display_string()
+                .to_lowercase()
+                .contains(&filter_str),
         }
     }
 
     fn check_starts_with(&self, property: &PropertyValue, filter: &PropertyValue) -> bool {
         let filter_str = filter.to_display_string().to_lowercase();
-        property.to_display_string().to_lowercase().starts_with(&filter_str)
+        property
+            .to_display_string()
+            .to_lowercase()
+            .starts_with(&filter_str)
     }
 
     fn check_ends_with(&self, property: &PropertyValue, filter: &PropertyValue) -> bool {
         let filter_str = filter.to_display_string().to_lowercase();
-        property.to_display_string().to_lowercase().ends_with(&filter_str)
+        property
+            .to_display_string()
+            .to_lowercase()
+            .ends_with(&filter_str)
     }
 
     fn check_greater_than(&self, a: &PropertyValue, b: &PropertyValue, or_equal: bool) -> bool {
         match (a, b) {
             (PropertyValue::Number(n1), PropertyValue::Number(n2)) => {
-                if or_equal { n1 >= n2 } else { n1 > n2 }
+                if or_equal {
+                    n1 >= n2
+                } else {
+                    n1 > n2
+                }
             }
             (PropertyValue::Date(d1), PropertyValue::Date(d2)) => {
-                if or_equal { d1 >= d2 } else { d1 > d2 }
+                if or_equal {
+                    d1 >= d2
+                } else {
+                    d1 > d2
+                }
             }
             (PropertyValue::DateTime(dt1), PropertyValue::DateTime(dt2)) => {
-                if or_equal { dt1 >= dt2 } else { dt1 > dt2 }
+                if or_equal {
+                    dt1 >= dt2
+                } else {
+                    dt1 > dt2
+                }
             }
             _ => false,
         }
@@ -351,13 +386,25 @@ impl FilterOperator {
     fn check_less_than(&self, a: &PropertyValue, b: &PropertyValue, or_equal: bool) -> bool {
         match (a, b) {
             (PropertyValue::Number(n1), PropertyValue::Number(n2)) => {
-                if or_equal { n1 <= n2 } else { n1 < n2 }
+                if or_equal {
+                    n1 <= n2
+                } else {
+                    n1 < n2
+                }
             }
             (PropertyValue::Date(d1), PropertyValue::Date(d2)) => {
-                if or_equal { d1 <= d2 } else { d1 < d2 }
+                if or_equal {
+                    d1 <= d2
+                } else {
+                    d1 < d2
+                }
             }
             (PropertyValue::DateTime(dt1), PropertyValue::DateTime(dt2)) => {
-                if or_equal { dt1 <= dt2 } else { dt1 < dt2 }
+                if or_equal {
+                    dt1 <= dt2
+                } else {
+                    dt1 < dt2
+                }
             }
             _ => false,
         }
@@ -369,16 +416,20 @@ impl FilterOperator {
 pub struct Filter {
     /// Nombre de la propiedad a filtrar (ej: "status", "date", "tags")
     pub property: String,
-    
+
     /// Operador de comparación
     pub operator: FilterOperator,
-    
+
     /// Valor a comparar
     pub value: PropertyValue,
 }
 
 impl Filter {
-    pub fn new(property: impl Into<String>, operator: FilterOperator, value: PropertyValue) -> Self {
+    pub fn new(
+        property: impl Into<String>,
+        operator: FilterOperator,
+        value: PropertyValue,
+    ) -> Self {
         Self {
             property: property.into(),
             operator,
@@ -393,12 +444,20 @@ impl Filter {
 
     /// Filtro rápido: tiene tag
     pub fn has_tag(tag: impl Into<String>) -> Self {
-        Self::new("tags", FilterOperator::Contains, PropertyValue::Text(tag.into()))
+        Self::new(
+            "tags",
+            FilterOperator::Contains,
+            PropertyValue::Text(tag.into()),
+        )
     }
 
     /// Filtro rápido: propiedad contiene texto
     pub fn contains(property: impl Into<String>, text: impl Into<String>) -> Self {
-        Self::new(property, FilterOperator::Contains, PropertyValue::Text(text.into()))
+        Self::new(
+            property,
+            FilterOperator::Contains,
+            PropertyValue::Text(text.into()),
+        )
     }
 
     /// Filtro rápido: no está vacío
@@ -432,7 +491,7 @@ impl Filter {
 pub struct FilterGroup {
     /// Filtros individuales
     pub filters: Vec<Filter>,
-    
+
     /// Operador lógico entre filtros (default: AND)
     #[serde(default)]
     pub logic: FilterLogic,
@@ -487,7 +546,7 @@ pub enum SortDirection {
 pub struct SortConfig {
     /// Propiedad por la cual ordenar
     pub property: String,
-    
+
     /// Dirección del ordenamiento
     #[serde(default)]
     pub direction: SortDirection,
@@ -514,21 +573,23 @@ impl SortConfig {
 pub struct ColumnConfig {
     /// Nombre de la propiedad
     pub property: String,
-    
+
     /// Título a mostrar (default: nombre de propiedad capitalizado)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
-    
+
     /// Ancho de la columna en píxeles (default: auto)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub width: Option<u32>,
-    
+
     /// Si la columna es visible (default: true)
     #[serde(default = "default_true")]
     pub visible: bool,
 }
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 impl ColumnConfig {
     pub fn new(property: impl Into<String>) -> Self {
@@ -569,7 +630,7 @@ pub enum ViewType {
     #[default]
     Table,
     List,
-    Board,  // Kanban-style
+    Board, // Kanban-style
     Gallery,
 }
 
@@ -591,31 +652,31 @@ pub enum SourceType {
 pub struct BaseView {
     /// Nombre de la vista
     pub name: String,
-    
+
     /// Tipo de vista
     #[serde(default)]
     pub view_type: ViewType,
-    
+
     /// Filtros aplicados a esta vista
     #[serde(default)]
     pub filter: FilterGroup,
-    
+
     /// Columnas a mostrar (en orden)
     #[serde(default)]
     pub columns: Vec<ColumnConfig>,
-    
+
     /// Ordenamiento
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sort: Option<SortConfig>,
-    
+
     /// Propiedad por la cual agrupar (para Board/Gallery)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group_by: Option<String>,
-    
+
     /// Si la vista es editable (permite modificar datos en las notas)
     #[serde(default)]
     pub editable: bool,
-    
+
     /// Filas especiales con fórmulas (totales, promedios, etc.)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub special_rows: Vec<SpecialRow>,
@@ -657,23 +718,21 @@ impl BaseView {
         view.group_by = Some(group_by.into());
         view
     }
-    
+
     /// Crear una vista para registros agrupados (sin columnas por defecto)
     pub fn grouped_records(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
             view_type: ViewType::Table,
             filter: FilterGroup::new(vec![]),
-            columns: vec![
-                ColumnConfig::new("_note").with_title("Note"),
-            ],
+            columns: vec![ColumnConfig::new("_note").with_title("Note")],
             sort: None,
             group_by: None,
             editable: false,
             special_rows: Vec::new(),
         }
     }
-    
+
     /// Crear una vista para registros filtrados por propiedad (editable)
     /// La columna principal es la propiedad de filtro
     pub fn property_records(name: impl Into<String>, filter_property: &str) -> Self {
@@ -707,35 +766,35 @@ fn capitalize(s: &str) -> String {
 pub struct Base {
     /// Nombre de la Base
     pub name: String,
-    
+
     /// Descripción opcional
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    
+
     /// Tipo de fuente de datos (notas o registros agrupados)
     #[serde(default)]
     pub source_type: SourceType,
-    
+
     /// Carpeta fuente (opcional - si no, busca en todas las notas)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_folder: Option<String>,
-    
+
     /// Propiedad de filtro para SourceType::PropertyRecords
     /// Ejemplo: "juego" filtra todos los registros que contienen [juego::X]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub filter_property: Option<String>,
-    
+
     /// Vistas disponibles
     pub views: Vec<BaseView>,
-    
+
     /// Índice de la vista activa
     #[serde(default)]
     pub active_view: usize,
-    
+
     /// Fecha de creación (timestamp)
     #[serde(default)]
     pub created_at: i64,
-    
+
     /// Fecha de última modificación (timestamp)
     #[serde(default)]
     pub updated_at: i64,
@@ -756,7 +815,7 @@ impl Base {
             updated_at: now,
         }
     }
-    
+
     /// Crear una Base de registros agrupados
     pub fn grouped_records(name: impl Into<String>) -> Self {
         let now = chrono::Utc::now().timestamp();
@@ -772,7 +831,7 @@ impl Base {
             updated_at: now,
         }
     }
-    
+
     /// Crear una Base de registros filtrados por propiedad (BD bidireccional)
     /// Las columnas se descubren automáticamente
     pub fn property_records(name: impl Into<String>, filter_property: impl Into<String>) -> Self {
@@ -863,46 +922,52 @@ mod tests {
     #[test]
     fn test_filter_operator_equals() {
         let op = FilterOperator::Equals;
-        
+
         assert!(op.evaluate(
             &PropertyValue::Text("hello".to_string()),
             &PropertyValue::Text("HELLO".to_string())
         ));
-        
-        assert!(op.evaluate(
-            &PropertyValue::Number(42.0),
-            &PropertyValue::Number(42.0)
-        ));
-        
-        assert!(!op.evaluate(
-            &PropertyValue::Number(42.0),
-            &PropertyValue::Number(43.0)
-        ));
+
+        assert!(op.evaluate(&PropertyValue::Number(42.0), &PropertyValue::Number(42.0)));
+
+        assert!(!op.evaluate(&PropertyValue::Number(42.0), &PropertyValue::Number(43.0)));
     }
 
     #[test]
     fn test_filter_contains() {
         let filter = Filter::contains("title", "rust");
-        
+
         let mut props = HashMap::new();
-        props.insert("title".to_string(), PropertyValue::Text("Learning Rust".to_string()));
-        
+        props.insert(
+            "title".to_string(),
+            PropertyValue::Text("Learning Rust".to_string()),
+        );
+
         assert!(filter.evaluate(&props));
-        
-        props.insert("title".to_string(), PropertyValue::Text("Learning Python".to_string()));
+
+        props.insert(
+            "title".to_string(),
+            PropertyValue::Text("Learning Python".to_string()),
+        );
         assert!(!filter.evaluate(&props));
     }
 
     #[test]
     fn test_filter_has_tag() {
         let filter = Filter::has_tag("rust");
-        
+
         let mut props = HashMap::new();
-        props.insert("tags".to_string(), PropertyValue::Tags(vec!["rust".to_string(), "gtk".to_string()]));
-        
+        props.insert(
+            "tags".to_string(),
+            PropertyValue::Tags(vec!["rust".to_string(), "gtk".to_string()]),
+        );
+
         assert!(filter.evaluate(&props));
-        
-        props.insert("tags".to_string(), PropertyValue::Tags(vec!["python".to_string()]));
+
+        props.insert(
+            "tags".to_string(),
+            PropertyValue::Tags(vec!["python".to_string()]),
+        );
         assert!(!filter.evaluate(&props));
     }
 
@@ -912,34 +977,49 @@ mod tests {
             Filter::has_tag("rust"),
             Filter::contains("title", "learning"),
         ]);
-        
+
         let mut props = HashMap::new();
-        props.insert("tags".to_string(), PropertyValue::Tags(vec!["rust".to_string()]));
-        props.insert("title".to_string(), PropertyValue::Text("Learning Rust".to_string()));
-        
+        props.insert(
+            "tags".to_string(),
+            PropertyValue::Tags(vec!["rust".to_string()]),
+        );
+        props.insert(
+            "title".to_string(),
+            PropertyValue::Text("Learning Rust".to_string()),
+        );
+
         assert!(group.evaluate(&props));
-        
+
         // Si falta un filtro, AND falla
-        props.insert("title".to_string(), PropertyValue::Text("Advanced Rust".to_string()));
+        props.insert(
+            "title".to_string(),
+            PropertyValue::Text("Advanced Rust".to_string()),
+        );
         assert!(!group.evaluate(&props));
     }
 
     #[test]
     fn test_filter_group_or() {
-        let group = FilterGroup::with_or(vec![
-            Filter::has_tag("rust"),
-            Filter::has_tag("python"),
-        ]);
-        
+        let group = FilterGroup::with_or(vec![Filter::has_tag("rust"), Filter::has_tag("python")]);
+
         let mut props = HashMap::new();
-        props.insert("tags".to_string(), PropertyValue::Tags(vec!["rust".to_string()]));
-        
+        props.insert(
+            "tags".to_string(),
+            PropertyValue::Tags(vec!["rust".to_string()]),
+        );
+
         assert!(group.evaluate(&props));
-        
-        props.insert("tags".to_string(), PropertyValue::Tags(vec!["python".to_string()]));
+
+        props.insert(
+            "tags".to_string(),
+            PropertyValue::Tags(vec!["python".to_string()]),
+        );
         assert!(group.evaluate(&props));
-        
-        props.insert("tags".to_string(), PropertyValue::Tags(vec!["javascript".to_string()]));
+
+        props.insert(
+            "tags".to_string(),
+            PropertyValue::Tags(vec!["javascript".to_string()]),
+        );
         assert!(!group.evaluate(&props));
     }
 
@@ -948,10 +1028,10 @@ mod tests {
         let mut base = Base::new("My Tasks");
         base.description = Some("Task tracking".to_string());
         base.source_folder = Some("projects".to_string());
-        
+
         let yaml = base.serialize().unwrap();
         let parsed = Base::parse(&yaml).unwrap();
-        
+
         assert_eq!(parsed.name, "My Tasks");
         assert_eq!(parsed.description, Some("Task tracking".to_string()));
         assert_eq!(parsed.source_folder, Some("projects".to_string()));
@@ -959,9 +1039,8 @@ mod tests {
 
     #[test]
     fn test_base_view_columns() {
-        let view = BaseView::table("Tasks")
-            ;
-        
+        let view = BaseView::table("Tasks");
+
         assert_eq!(view.columns.len(), 3);
         assert_eq!(view.columns[0].property, "title");
     }

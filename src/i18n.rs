@@ -169,10 +169,7 @@ impl I18n {
         );
 
         // Format Toolbar
-        translations.insert(
-            "format_toolbar",
-            ("Barra de formato", "Format Toolbar"),
-        );
+        translations.insert("format_toolbar", ("Barra de formato", "Format Toolbar"));
         translations.insert(
             "format_toolbar_desc",
             (
@@ -1220,68 +1217,146 @@ impl I18n {
         translations.insert("base_add_filter", ("Añadir filtro", "Add filter"));
         translations.insert("base_sort", ("Ordenar", "Sort"));
         translations.insert("base_columns", ("Columnas", "Columns"));
-        translations.insert("base_columns_config", ("Configurar Columnas", "Configure Columns"));
+        translations.insert(
+            "base_columns_config",
+            ("Configurar Columnas", "Configure Columns"),
+        );
         translations.insert("base_data_source", ("Origen de datos", "Data source mode"));
         translations.insert("base_formula_rows", ("Filas con fórmulas", "Formula rows"));
-        translations.insert("base_formula_rows_title", ("Filas de Fórmulas", "Formula Rows"));
-        translations.insert("base_add_formula_row", ("Añadir fila de totales", "Add totals row"));
+        translations.insert(
+            "base_formula_rows_title",
+            ("Filas de Fórmulas", "Formula Rows"),
+        );
+        translations.insert(
+            "base_add_formula_row",
+            ("Añadir fila de totales", "Add totals row"),
+        );
         translations.insert("base_formula_row_label", ("Etiqueta", "Label"));
-        translations.insert("base_formula_help", ("Usa fórmulas tipo Excel: =SUM(B:B), =AVG(C1:C10)", "Use Excel-like formulas: =SUM(B:B), =AVG(C1:C10)"));
+        translations.insert(
+            "base_formula_help",
+            (
+                "Usa fórmulas tipo Excel: =SUM(B:B), =AVG(C1:C10)",
+                "Use Excel-like formulas: =SUM(B:B), =AVG(C1:C10)",
+            ),
+        );
         translations.insert("base_export_xlsx", ("Exportar a Excel", "Export to Excel"));
-        translations.insert("base_export_xlsx_success", ("Exportado correctamente", "Exported successfully"));
-        translations.insert("base_export_xlsx_error", ("Error al exportar", "Export error"));
-        translations.insert("base_show_graph", ("Mostrar grafo de relaciones", "Show relationships graph"));
+        translations.insert(
+            "base_export_xlsx_success",
+            ("Exportado correctamente", "Exported successfully"),
+        );
+        translations.insert(
+            "base_export_xlsx_error",
+            ("Error al exportar", "Export error"),
+        );
+        translations.insert(
+            "base_show_graph",
+            ("Mostrar grafo de relaciones", "Show relationships graph"),
+        );
         translations.insert("base_no_filters", ("Sin filtros", "No filters"));
-        translations.insert("base_current_columns", ("Columnas visibles", "Visible Columns"));
-        translations.insert("base_available_properties", ("Propiedades disponibles", "Available Properties"));
-        translations.insert("base_toggle_visibility", ("Alternar visibilidad", "Toggle visibility"));
+        translations.insert(
+            "base_current_columns",
+            ("Columnas visibles", "Visible Columns"),
+        );
+        translations.insert(
+            "base_available_properties",
+            ("Propiedades disponibles", "Available Properties"),
+        );
+        translations.insert(
+            "base_toggle_visibility",
+            ("Alternar visibilidad", "Toggle visibility"),
+        );
         translations.insert("base_remove_column", ("Eliminar columna", "Remove column"));
-        translations.insert("base_add_column", ("Propiedades disponibles", "Available Properties"));
-        translations.insert("base_properties_hint", ("Clic en + para añadir como columna", "Click + to add as column"));
-        translations.insert("base_add_as_column", ("Añadir como columna", "Add as column"));
+        translations.insert(
+            "base_add_column",
+            ("Propiedades disponibles", "Available Properties"),
+        );
+        translations.insert(
+            "base_properties_hint",
+            (
+                "Clic en + para añadir como columna",
+                "Click + to add as column",
+            ),
+        );
+        translations.insert(
+            "base_add_as_column",
+            ("Añadir como columna", "Add as column"),
+        );
         translations.insert("base_move_up", ("Mover arriba", "Move up"));
         translations.insert("base_move_down", ("Mover abajo", "Move down"));
         translations.insert("base_data_source_title", ("Origen de datos", "Data Source"));
         translations.insert("base_notes_mode", ("Notas", "Notes"));
-        translations.insert("base_grouped_mode", ("Registros agrupados", "Grouped Records"));
+        translations.insert(
+            "base_grouped_mode",
+            ("Registros agrupados", "Grouped Records"),
+        );
         translations.insert("base_grouped_hint", ("Los registros agrupados muestran propiedades\ninline como [game::X, bought::Y] como filas", "Grouped Records shows inline property\ngroups like [game::X, bought::Y] as rows"));
-        translations.insert("base_search_placeholder", ("Buscar en tabla...", "Search in table..."));
-        translations.insert("base_no_notes", ("No se encontraron notas", "No notes found"));
+        translations.insert(
+            "base_search_placeholder",
+            ("Buscar en tabla...", "Search in table..."),
+        );
+        translations.insert(
+            "base_no_notes",
+            ("No se encontraron notas", "No notes found"),
+        );
         translations.insert("base_items", ("elementos", "items"));
         translations.insert("base_items_of", ("de", "of"));
         translations.insert("base_title", ("Título", "Title"));
         translations.insert("base_created", ("Creado", "Created"));
         translations.insert("base_modified", ("Modificado", "Modified"));
         translations.insert("base_tags", ("Etiquetas", "Tags"));
-        translations.insert("base_search_properties", ("Buscar propiedades...", "Search properties..."));
+        translations.insert(
+            "base_search_properties",
+            ("Buscar propiedades...", "Search properties..."),
+        );
         translations.insert("base_move_up", ("Mover arriba", "Move up"));
         translations.insert("base_move_down", ("Mover abajo", "Move down"));
-        translations.insert("base_no_available_props", ("No hay más propiedades disponibles", "No more properties available"));
+        translations.insert(
+            "base_no_available_props",
+            (
+                "No hay más propiedades disponibles",
+                "No more properties available",
+            ),
+        );
 
         // === SORT POPOVER ===
         translations.insert("base_sort_by", ("Ordenar por", "Sort by"));
         translations.insert("base_no_sorting", ("Sin ordenar", "No sorting"));
-        translations.insert("base_sort_ascending", ("Orden ascendente", "Sort ascending"));
-        translations.insert("base_sort_descending", ("Orden descendente", "Sort descending"));
+        translations.insert(
+            "base_sort_ascending",
+            ("Orden ascendente", "Sort ascending"),
+        );
+        translations.insert(
+            "base_sort_descending",
+            ("Orden descendente", "Sort descending"),
+        );
 
         // === FILTER POPOVER ===
         translations.insert("base_add_filter_title", ("Añadir filtro", "Add Filter"));
         translations.insert("base_property", ("Propiedad", "Property"));
         translations.insert("base_operator", ("Operador", "Operator"));
         translations.insert("base_value", ("Valor", "Value"));
-        translations.insert("base_filter_value_placeholder", ("Valor del filtro...", "Filter value..."));
+        translations.insert(
+            "base_filter_value_placeholder",
+            ("Valor del filtro...", "Filter value..."),
+        );
         translations.insert("base_cancel", ("Cancelar", "Cancel"));
         translations.insert("base_apply_filter", ("Aplicar filtro", "Add Filter"));
-        
+
         // Operadores de filtro
         translations.insert("filter_op_equals", ("igual a", "equals"));
         translations.insert("filter_op_not_equals", ("distinto de", "not equals"));
         translations.insert("filter_op_contains", ("contiene", "contains"));
         translations.insert("filter_op_not_contains", ("no contiene", "not contains"));
         translations.insert("filter_op_greater_than", ("mayor que", "greater than"));
-        translations.insert("filter_op_greater_or_equal", ("mayor o igual", "greater or equal"));
+        translations.insert(
+            "filter_op_greater_or_equal",
+            ("mayor o igual", "greater or equal"),
+        );
         translations.insert("filter_op_less_than", ("menor que", "less than"));
-        translations.insert("filter_op_less_or_equal", ("menor o igual", "less or equal"));
+        translations.insert(
+            "filter_op_less_or_equal",
+            ("menor o igual", "less or equal"),
+        );
         translations.insert("filter_op_starts_with", ("empieza con", "starts with"));
         translations.insert("filter_op_ends_with", ("termina con", "ends with"));
         translations.insert("filter_op_is_empty", ("está vacío", "is empty"));

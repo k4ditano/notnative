@@ -42,9 +42,7 @@ impl PropertyValue {
         match value {
             serde_yaml::Value::Null => PropertyValue::Null,
             serde_yaml::Value::Bool(b) => PropertyValue::Checkbox(*b),
-            serde_yaml::Value::Number(n) => {
-                PropertyValue::Number(n.as_f64().unwrap_or(0.0))
-            }
+            serde_yaml::Value::Number(n) => PropertyValue::Number(n.as_f64().unwrap_or(0.0)),
             serde_yaml::Value::String(s) => {
                 // Intentar detectar si es una fecha
                 if Self::is_date(s) {
@@ -63,11 +61,26 @@ impl PropertyValue {
 
                 // Detectar si son tags o links
                 if items.iter().all(|s| s.starts_with('#')) {
-                    PropertyValue::Tags(items.iter().map(|s| s.trim_start_matches('#').to_string()).collect())
-                } else if items.iter().all(|s| s.starts_with("[[") && s.ends_with("]]")) {
-                    PropertyValue::Links(items.iter().map(|s| {
-                        s.trim_start_matches("[[").trim_end_matches("]]").to_string()
-                    }).collect())
+                    PropertyValue::Tags(
+                        items
+                            .iter()
+                            .map(|s| s.trim_start_matches('#').to_string())
+                            .collect(),
+                    )
+                } else if items
+                    .iter()
+                    .all(|s| s.starts_with("[[") && s.ends_with("]]"))
+                {
+                    PropertyValue::Links(
+                        items
+                            .iter()
+                            .map(|s| {
+                                s.trim_start_matches("[[")
+                                    .trim_end_matches("]]")
+                                    .to_string()
+                            })
+                            .collect(),
+                    )
                 } else {
                     PropertyValue::List(items)
                 }
@@ -90,8 +103,10 @@ impl PropertyValue {
         if parts.len() != 3 {
             return false;
         }
-        parts[0].len() == 4 && parts[1].len() == 2 && parts[2].len() == 2 &&
-        parts.iter().all(|p| p.chars().all(|c| c.is_ascii_digit()))
+        parts[0].len() == 4
+            && parts[1].len() == 2
+            && parts[2].len() == 2
+            && parts.iter().all(|p| p.chars().all(|c| c.is_ascii_digit()))
     }
 
     /// Verificar si un string es un datetime ISO 8601
@@ -131,13 +146,21 @@ impl PropertyValue {
             PropertyValue::Date(d) => Self::format_date_friendly(d),
             PropertyValue::DateTime(dt) => Self::format_datetime_friendly(dt),
             PropertyValue::List(items) => items.join(", "),
-            PropertyValue::Tags(tags) => tags.iter().map(|t| format!("#{}", t)).collect::<Vec<_>>().join(" "),
-            PropertyValue::Links(links) => links.iter().map(|l| format!("[[{}]]", l)).collect::<Vec<_>>().join(", "),
+            PropertyValue::Tags(tags) => tags
+                .iter()
+                .map(|t| format!("#{}", t))
+                .collect::<Vec<_>>()
+                .join(" "),
+            PropertyValue::Links(links) => links
+                .iter()
+                .map(|l| format!("[[{}]]", l))
+                .collect::<Vec<_>>()
+                .join(", "),
             PropertyValue::Link(note) => format!("@{}", note),
             PropertyValue::Null => "—".to_string(),
         }
     }
-    
+
     /// Formatear fecha de forma amigable
     fn format_date_friendly(date_str: &str) -> String {
         // Intentar parsear varios formatos
@@ -147,37 +170,37 @@ impl PropertyValue {
         // Si no se puede parsear, devolver original
         date_str.to_string()
     }
-    
+
     /// Formatear datetime de forma amigable
     fn format_datetime_friendly(dt_str: &str) -> String {
         let dt_str = dt_str.trim();
-        
+
         // Intentar parsear formato ISO con timezone (2025-12-02T19:30:53+00:00)
         if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(dt_str) {
             let local = dt.with_timezone(&chrono::Local);
             return local.format("%d %b %Y, %H:%M").to_string();
         }
-        
+
         // Intentar ISO sin timezone (2025-12-02T19:30:53)
         if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(dt_str, "%Y-%m-%dT%H:%M:%S") {
             return dt.format("%d %b %Y, %H:%M").to_string();
         }
-        
+
         // Intentar con milisegundos
         if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(dt_str, "%Y-%m-%dT%H:%M:%S%.f") {
             return dt.format("%d %b %Y, %H:%M").to_string();
         }
-        
+
         // Intentar formato simple (2025-12-02 19:30:53)
         if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(dt_str, "%Y-%m-%d %H:%M:%S") {
             return dt.format("%d %b %Y, %H:%M").to_string();
         }
-        
+
         // Intentar formato sin segundos
         if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(dt_str, "%Y-%m-%d %H:%M") {
             return dt.format("%d %b %Y, %H:%M").to_string();
         }
-        
+
         // Si no se puede parsear, devolver original
         dt_str.to_string()
     }
@@ -192,7 +215,9 @@ impl PropertyValue {
             PropertyValue::DateTime(dt) => dt.clone(),
             PropertyValue::List(items) => items.first().cloned().unwrap_or_default().to_lowercase(),
             PropertyValue::Tags(tags) => tags.first().cloned().unwrap_or_default().to_lowercase(),
-            PropertyValue::Links(links) => links.first().cloned().unwrap_or_default().to_lowercase(),
+            PropertyValue::Links(links) => {
+                links.first().cloned().unwrap_or_default().to_lowercase()
+            }
             PropertyValue::Link(note) => note.to_lowercase(),
             PropertyValue::Null => String::new(),
         }
@@ -218,27 +243,27 @@ impl PropertyValue {
     pub fn to_yaml(&self) -> serde_yaml::Value {
         match self {
             PropertyValue::Text(s) => serde_yaml::Value::String(s.clone()),
-            PropertyValue::Number(n) => {
-                serde_yaml::Value::Number(serde_yaml::Number::from(*n))
-            }
+            PropertyValue::Number(n) => serde_yaml::Value::Number(serde_yaml::Number::from(*n)),
             PropertyValue::Checkbox(b) => serde_yaml::Value::Bool(*b),
             PropertyValue::Date(d) => serde_yaml::Value::String(d.clone()),
             PropertyValue::DateTime(dt) => serde_yaml::Value::String(dt.clone()),
-            PropertyValue::List(items) => {
-                serde_yaml::Value::Sequence(
-                    items.iter().map(|s| serde_yaml::Value::String(s.clone())).collect()
-                )
-            }
-            PropertyValue::Tags(tags) => {
-                serde_yaml::Value::Sequence(
-                    tags.iter().map(|t| serde_yaml::Value::String(format!("#{}", t))).collect()
-                )
-            }
-            PropertyValue::Links(links) => {
-                serde_yaml::Value::Sequence(
-                    links.iter().map(|l| serde_yaml::Value::String(format!("[[{}]]", l))).collect()
-                )
-            }
+            PropertyValue::List(items) => serde_yaml::Value::Sequence(
+                items
+                    .iter()
+                    .map(|s| serde_yaml::Value::String(s.clone()))
+                    .collect(),
+            ),
+            PropertyValue::Tags(tags) => serde_yaml::Value::Sequence(
+                tags.iter()
+                    .map(|t| serde_yaml::Value::String(format!("#{}", t)))
+                    .collect(),
+            ),
+            PropertyValue::Links(links) => serde_yaml::Value::Sequence(
+                links
+                    .iter()
+                    .map(|l| serde_yaml::Value::String(format!("[[{}]]", l)))
+                    .collect(),
+            ),
             PropertyValue::Link(note) => serde_yaml::Value::String(format!("@{}", note)),
             PropertyValue::Null => serde_yaml::Value::Null,
         }
@@ -313,25 +338,32 @@ mod tests {
 
         // Checkbox
         let yaml = serde_yaml::Value::Bool(true);
-        assert!(matches!(PropertyValue::from_yaml(&yaml), PropertyValue::Checkbox(true)));
+        assert!(matches!(
+            PropertyValue::from_yaml(&yaml),
+            PropertyValue::Checkbox(true)
+        ));
 
         // Date
         let yaml = serde_yaml::Value::String("2025-11-28".to_string());
-        assert!(matches!(PropertyValue::from_yaml(&yaml), PropertyValue::Date(d) if d == "2025-11-28"));
+        assert!(
+            matches!(PropertyValue::from_yaml(&yaml), PropertyValue::Date(d) if d == "2025-11-28")
+        );
 
         // List
         let yaml = serde_yaml::Value::Sequence(vec![
             serde_yaml::Value::String("a".to_string()),
             serde_yaml::Value::String("b".to_string()),
         ]);
-        assert!(matches!(PropertyValue::from_yaml(&yaml), PropertyValue::List(items) if items.len() == 2));
+        assert!(
+            matches!(PropertyValue::from_yaml(&yaml), PropertyValue::List(items) if items.len() == 2)
+        );
     }
 
     #[test]
     fn test_sort_key() {
         let num1 = PropertyValue::Number(10.0);
         let num2 = PropertyValue::Number(2.0);
-        
+
         // Verificar que el orden numérico funciona
         assert!(num2.sort_key() < num1.sort_key());
     }

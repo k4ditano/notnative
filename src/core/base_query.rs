@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use super::base::{Base, BaseView, FilterGroup, SortConfig, SortDirection};
-use super::database::{NotesDatabase, NoteMetadata, Result as DbResult};
+use super::database::{NoteMetadata, NotesDatabase, Result as DbResult};
 use super::property::PropertyValue;
 
 /// Resultado de una nota con sus propiedades extraídas
@@ -10,10 +10,10 @@ use super::property::PropertyValue;
 pub struct NoteWithProperties {
     /// Metadata de la nota desde la BD
     pub metadata: NoteMetadata,
-    
+
     /// Propiedades extraídas del frontmatter + metadata
     pub properties: HashMap<String, PropertyValue>,
-    
+
     /// Contenido de la nota (opcional, para vistas que lo necesiten)
     pub content: Option<String>,
 }
@@ -68,7 +68,7 @@ impl<'a> BaseQueryEngine<'a> {
             .filter_map(|note| {
                 // Cargar contenido y extraer propiedades
                 let props = self.load_note_properties(&note).ok()?;
-                
+
                 // Aplicar filtros
                 if view.filter.evaluate(&props.properties) {
                     Some(props)
@@ -91,24 +91,12 @@ impl<'a> BaseQueryEngine<'a> {
         let mut properties = HashMap::new();
 
         // Propiedades built-in desde metadata
-        properties.insert(
-            "title".to_string(),
-            PropertyValue::Text(note.name.clone()),
-        );
-        properties.insert(
-            "name".to_string(),
-            PropertyValue::Text(note.name.clone()),
-        );
-        properties.insert(
-            "path".to_string(),
-            PropertyValue::Text(note.path.clone()),
-        );
-        
+        properties.insert("title".to_string(), PropertyValue::Text(note.name.clone()));
+        properties.insert("name".to_string(), PropertyValue::Text(note.name.clone()));
+        properties.insert("path".to_string(), PropertyValue::Text(note.path.clone()));
+
         if let Some(folder) = &note.folder {
-            properties.insert(
-                "folder".to_string(),
-                PropertyValue::Text(folder.clone()),
-            );
+            properties.insert("folder".to_string(), PropertyValue::Text(folder.clone()));
         }
 
         properties.insert(
@@ -133,7 +121,7 @@ impl<'a> BaseQueryEngine<'a> {
             for prop in inline_props {
                 let value = prop.to_property_value();
                 let key = prop.key.clone();
-                
+
                 // Si ya existe la misma key, combinar valores
                 if properties.contains_key(&key) {
                     let existing = properties.remove(&key).unwrap();
@@ -169,13 +157,15 @@ impl<'a> BaseQueryEngine<'a> {
     }
 
     /// Ordenar resultados según configuración
-    fn sort_results(&self, results: &mut Vec<NoteWithProperties>, sort: &SortConfig) {
+    fn sort_results(&self, results: &mut [NoteWithProperties], sort: &SortConfig) {
         results.sort_by(|a, b| {
-            let key_a = a.properties
+            let key_a = a
+                .properties
                 .get(&sort.property)
                 .map(|v| v.sort_key())
                 .unwrap_or_default();
-            let key_b = b.properties
+            let key_b = b
+                .properties
                 .get(&sort.property)
                 .map(|v| v.sort_key())
                 .unwrap_or_default();
@@ -223,14 +213,14 @@ impl<'a> BaseQueryEngine<'a> {
         names.sort();
         Ok(names)
     }
-    
+
     /// Descubrir propiedades inline para el modo Inline Data
     pub fn discover_inline_properties(&self) -> DbResult<Vec<String>> {
         let mut property_names = std::collections::HashSet::new();
-        
+
         // _note es especial - referencia a la nota origen
         property_names.insert("_note".to_string());
-        
+
         // Descubrir propiedades inline desde la BD
         if let Ok(keys) = self.db.get_all_property_keys() {
             for key in keys {
@@ -301,7 +291,7 @@ impl<'a> BaseQueryEngine<'a> {
             Some(values.iter().sum::<f64>() / values.len() as f64)
         }
     }
-    
+
     /// Calcular el valor mínimo de una propiedad numérica
     pub fn min_property(&self, results: &[NoteWithProperties], property: &str) -> Option<f64> {
         results
@@ -315,11 +305,9 @@ impl<'a> BaseQueryEngine<'a> {
                     }
                 })
             })
-            .fold(None, |acc, val| {
-                Some(acc.map_or(val, |a: f64| a.min(val)))
-            })
+            .fold(None, |acc, val| Some(acc.map_or(val, |a: f64| a.min(val))))
     }
-    
+
     /// Calcular el valor máximo de una propiedad numérica
     pub fn max_property(&self, results: &[NoteWithProperties], property: &str) -> Option<f64> {
         results
@@ -333,25 +321,28 @@ impl<'a> BaseQueryEngine<'a> {
                     }
                 })
             })
-            .fold(None, |acc, val| {
-                Some(acc.map_or(val, |a: f64| a.max(val)))
-            })
+            .fold(None, |acc, val| Some(acc.map_or(val, |a: f64| a.max(val))))
     }
-    
+
     /// Contar valores no vacíos de una propiedad
     pub fn count_non_empty(&self, results: &[NoteWithProperties], property: &str) -> usize {
         results
             .iter()
             .filter(|note| {
-                note.properties.get(property)
+                note.properties
+                    .get(property)
                     .map(|v| !v.is_empty())
                     .unwrap_or(false)
             })
             .count()
     }
-    
+
     /// Calcular todas las agregaciones para una propiedad numérica
-    pub fn aggregate_property(&self, results: &[NoteWithProperties], property: &str) -> PropertyAggregation {
+    pub fn aggregate_property(
+        &self,
+        results: &[NoteWithProperties],
+        property: &str,
+    ) -> PropertyAggregation {
         PropertyAggregation {
             sum: self.sum_property(results, property),
             avg: self.avg_property(results, property),
@@ -398,13 +389,17 @@ mod tests {
 
     #[test]
     fn test_filter_group_evaluation() {
-        let filter = FilterGroup::new(vec![
-            Filter::has_tag("rust"),
-        ]);
+        let filter = FilterGroup::new(vec![Filter::has_tag("rust")]);
 
         let mut props = HashMap::new();
-        props.insert("tags".to_string(), PropertyValue::Tags(vec!["rust".to_string(), "gtk".to_string()]));
-        props.insert("title".to_string(), PropertyValue::Text("Test Note".to_string()));
+        props.insert(
+            "tags".to_string(),
+            PropertyValue::Tags(vec!["rust".to_string(), "gtk".to_string()]),
+        );
+        props.insert(
+            "title".to_string(),
+            PropertyValue::Text("Test Note".to_string()),
+        );
 
         assert!(filter.evaluate(&props));
     }
@@ -412,7 +407,10 @@ mod tests {
     #[test]
     fn test_note_with_properties() {
         let mut props = HashMap::new();
-        props.insert("status".to_string(), PropertyValue::Text("done".to_string()));
+        props.insert(
+            "status".to_string(),
+            PropertyValue::Text("done".to_string()),
+        );
         props.insert("priority".to_string(), PropertyValue::Number(1.0));
 
         let note = make_test_note("test", props);

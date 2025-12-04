@@ -16,24 +16,19 @@ use std::sync::LazyLock;
 // ============================================================================
 
 /// Regex para detectar contenido entre corchetes [algo]
-static BRACKET_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\[([^\]]+)\]").unwrap()
-});
+static BRACKET_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[([^\]]+)\]").unwrap());
 
 /// Regex para parsear pares key::value o key:::value
-static PROP_PAIR_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"([^,:\s]+)(:::?)([^,]*)").unwrap()
-});
+static PROP_PAIR_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"([^,:\s]+)(:::?)([^,]*)").unwrap());
 
 /// Regex para links internos [[nota]]
-static INTERNAL_LINK_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\[\[([^\]]+)\]\]").unwrap()
-});
+static INTERNAL_LINK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[\[([^\]]+)\]\]").unwrap());
 
 /// Regex para tags #tag
-static TAG_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)(^|[\s\(\[,])#([a-zA-Z][a-zA-Z0-9_-]*)").unwrap()
-});
+static TAG_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)(^|[\s\(\[,])#([a-zA-Z][a-zA-Z0-9_-]*)").unwrap());
 
 /// Regex para YouTube watch URLs
 static YOUTUBE_WATCH_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -41,9 +36,8 @@ static YOUTUBE_WATCH_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// Regex para YouTube short URLs (youtu.be)
-static YOUTUBE_SHORT_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"https?://youtu\.be/([a-zA-Z0-9_-]{11})").unwrap()
-});
+static YOUTUBE_SHORT_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"https?://youtu\.be/([a-zA-Z0-9_-]{11})").unwrap());
 
 /// Regex para YouTube Shorts
 static YOUTUBE_SHORTS_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -51,14 +45,12 @@ static YOUTUBE_SHORTS_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// Regex para recordatorios con emoji
-static REMINDER_EMOJI_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)^(📅|⏰|🔔)\s*(.+)$").unwrap()
-});
+static REMINDER_EMOJI_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^(📅|⏰|🔔)\s*(.+)$").unwrap());
 
 /// Regex para !!RECORDAR/!!REMIND
-static RECORDAR_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"!!(?:RECORDAR|REMIND)\(([^,]+),\s*([^)]+)\)").unwrap()
-});
+static RECORDAR_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"!!(?:RECORDAR|REMIND)\(([^,]+),\s*([^)]+)\)").unwrap());
 
 /// Regex para checkboxes deshabilitados en HTML
 static CHECKBOX_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -66,19 +58,15 @@ static CHECKBOX_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// Regex para links internos en HTML
-static INTERNAL_LINK_HTML_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"<a href="notnative://note/([^"]+)">([^<]+)</a>"#).unwrap()
-});
+static INTERNAL_LINK_HTML_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"<a href="notnative://note/([^"]+)">([^<]+)</a>"#).unwrap());
 
 /// Regex para links de tags en HTML
-static TAG_LINK_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"<a href="notnative://tag/([^"]+)">([^<]+)</a>"#).unwrap()
-});
+static TAG_LINK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"<a href="notnative://tag/([^"]+)">([^<]+)</a>"#).unwrap());
 
 /// Regex para imágenes en HTML
-static IMG_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"<img src="([^"]+)""#).unwrap()
-});
+static IMG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"<img src="([^"]+)""#).unwrap());
 
 /// Decodifica una cadena URL-encoded (percent-encoded)
 fn url_decode(s: &str) -> String {
@@ -208,7 +196,7 @@ impl HtmlRenderer {
             colors: None,
         }
     }
-    
+
     /// Crea un renderer con colores dinámicos del tema GTK
     pub fn with_colors(theme: PreviewTheme, base_path: PathBuf, colors: PreviewColors) -> Self {
         Self {
@@ -217,7 +205,7 @@ impl HtmlRenderer {
             colors: Some(colors),
         }
     }
-    
+
     /// Establece los colores dinámicos
     pub fn set_colors(&mut self, colors: PreviewColors) {
         self.colors = Some(colors);
@@ -266,23 +254,23 @@ impl HtmlRenderer {
             if line.contains("::") && line.contains('[') {
                 let processed = BRACKET_RE.replace_all(line, |caps: &regex::Captures| {
                     let content = &caps[1];
-                    
+
                     // Verificar si contiene :: (es una propiedad inline)
                     if !content.contains("::") {
                         // No es propiedad inline, devolver original
                         return format!("[{}]", content);
                     }
-                    
+
                     // Procesar cada par key::value o key:::value separado por comas
                     let mut html_parts: Vec<String> = Vec::new();
                     let mut has_visible = false;
-                    
+
                     for prop_cap in PROP_PAIR_RE.captures_iter(content) {
                         let key = prop_cap.get(1).map(|m| m.as_str()).unwrap_or("");
                         let separator = prop_cap.get(2).map(|m| m.as_str()).unwrap_or("::");
                         let value = prop_cap.get(3).map(|m| m.as_str().trim()).unwrap_or("");
                         let is_hidden = separator == ":::";
-                        
+
                         if !is_hidden {
                             has_visible = true;
                             html_parts.push(format!(
@@ -292,7 +280,7 @@ impl HtmlRenderer {
                         }
                         // Las propiedades ocultas simplemente no se agregan
                     }
-                    
+
                     if has_visible {
                         html_parts.join(" ")
                     } else {
@@ -300,12 +288,12 @@ impl HtmlRenderer {
                         String::new()
                     }
                 }).to_string();
-                
+
                 // Si la línea procesada solo contiene spans de propiedades (y espacios),
                 // envolverla en un div para forzar que sea su propia línea
                 let trimmed = processed.trim();
-                if trimmed.starts_with("<span class=\"inline-property\"") || 
-                   trimmed.starts_with("<div") || 
+                if trimmed.starts_with("<span class=\"inline-property\"") ||
+                   trimmed.starts_with("<div") ||
                    trimmed.is_empty() {
                     format!("<div class=\"inline-props-line\">{}</div>", processed)
                 } else {
@@ -315,7 +303,7 @@ impl HtmlRenderer {
                 line.to_string()
             }
         }).collect();
-        
+
         result = processed_lines.join("\n");
 
         // Convertir [[nota]] a links especiales (placeholder que post-procesaremos)
@@ -348,7 +336,7 @@ impl HtmlRenderer {
                 )
             })
             .to_string();
-        
+
         // YouTube short URLs (youtu.be)
         result = YOUTUBE_SHORT_RE
             .replace_all(&result, |caps: &regex::Captures| {
@@ -359,7 +347,7 @@ impl HtmlRenderer {
                 )
             })
             .to_string();
-        
+
         // YouTube Shorts
         result = YOUTUBE_SHORTS_RE
             .replace_all(&result, |caps: &regex::Captures| {
@@ -594,14 +582,15 @@ impl HtmlRenderer {
         if let Some(ref colors) = self.colors {
             return self.get_dynamic_css(colors);
         }
-        
+
         // Fallback a colores estáticos basados en tema
         self.get_static_css()
     }
-    
+
     /// CSS con colores dinámicos del tema GTK
     fn get_dynamic_css(&self, colors: &PreviewColors) -> String {
-        format!(r#"
+        format!(
+            r#"
 :root {{
     --bg-primary: {bg_primary};
     --bg-secondary: {bg_secondary};
@@ -632,10 +621,11 @@ impl HtmlRenderer {
             common_css = Self::get_common_css(),
         )
     }
-    
+
     /// CSS con colores estáticos (fallback)
     fn get_static_css(&self) -> String {
-        format!(r#"
+        format!(
+            r#"
 :root {{
     --bg-primary: #1e1e2e;
     --bg-secondary: #313244;
@@ -677,7 +667,7 @@ body.light {{
             common_css = Self::get_common_css(),
         )
     }
-    
+
     /// CSS común que no depende del tema
     fn get_common_css() -> &'static str {
         r#"
@@ -1117,7 +1107,7 @@ function notifyRust(action, ...args) {
             action: action,
             args: args
         });
-        
+
         // Enviar al handler registrado en Rust
         if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.notnative) {
             window.webkit.messageHandlers.notnative.postMessage(message);
@@ -1144,7 +1134,7 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
         });
     });
-    
+
     // Añadir clase a listas con tasks
     document.querySelectorAll('li').forEach(function(li) {
         if (li.querySelector('input[type="checkbox"]')) {

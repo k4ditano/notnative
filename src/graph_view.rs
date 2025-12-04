@@ -52,8 +52,8 @@ pub struct GraphNode {
     pub node_type: NodeType,
     pub x: f64,
     pub y: f64,
-    pub vx: f64, // velocidad X
-    pub vy: f64, // velocidad Y
+    pub vx: f64,     // velocidad X
+    pub vy: f64,     // velocidad Y
     pub fixed: bool, // si está siendo arrastrado
     pub radius: f64,
 }
@@ -61,9 +61,9 @@ pub struct GraphNode {
 /// Tipo de nodo (para colores)
 #[derive(Debug, Clone, PartialEq)]
 pub enum NodeType {
-    PropertyKey,    // Nombre de propiedad (ej: "autor")
-    PropertyValue,  // Valor de propiedad (ej: "Cervantes")
-    Note,           // Nota origen
+    PropertyKey,   // Nombre de propiedad (ej: "autor")
+    PropertyValue, // Valor de propiedad (ej: "Cervantes")
+    Note,          // Nota origen
 }
 
 impl NodeType {
@@ -71,11 +71,23 @@ impl NodeType {
     pub fn color(&self) -> (f64, f64, f64) {
         match self {
             // Catppuccin Mocha Blue: #89b4fa
-            NodeType::PropertyKey => (0x89 as f64 / 255.0, 0xb4 as f64 / 255.0, 0xfa as f64 / 255.0),
+            NodeType::PropertyKey => (
+                0x89 as f64 / 255.0,
+                0xb4 as f64 / 255.0,
+                0xfa as f64 / 255.0,
+            ),
             // Catppuccin Mocha Peach: #fab387
-            NodeType::PropertyValue => (0xfa as f64 / 255.0, 0xb3 as f64 / 255.0, 0x87 as f64 / 255.0),
+            NodeType::PropertyValue => (
+                0xfa as f64 / 255.0,
+                0xb3 as f64 / 255.0,
+                0x87 as f64 / 255.0,
+            ),
             // Catppuccin Mocha Green: #a6e3a1
-            NodeType::Note => (0xa6 as f64 / 255.0, 0xe3 as f64 / 255.0, 0xa1 as f64 / 255.0),
+            NodeType::Note => (
+                0xa6 as f64 / 255.0,
+                0xe3 as f64 / 255.0,
+                0xa1 as f64 / 255.0,
+            ),
         }
     }
 }
@@ -130,24 +142,27 @@ impl GraphState {
             // Posición inicial aleatoria
             let x = random_f64() * 400.0 + 100.0;
             let y = random_f64() * 400.0 + 100.0;
-            
+
             let radius = match node_type {
                 NodeType::PropertyKey => 25.0,
                 NodeType::PropertyValue => 20.0,
                 NodeType::Note => 30.0,
             };
-            
-            self.nodes.insert(id.to_string(), GraphNode {
-                id: id.to_string(),
-                label: label.to_string(),
-                node_type,
-                x,
-                y,
-                vx: 0.0,
-                vy: 0.0,
-                fixed: false,
-                radius,
-            });
+
+            self.nodes.insert(
+                id.to_string(),
+                GraphNode {
+                    id: id.to_string(),
+                    label: label.to_string(),
+                    node_type,
+                    x,
+                    y,
+                    vx: 0.0,
+                    vy: 0.0,
+                    fixed: false,
+                    radius,
+                },
+            );
         }
     }
 
@@ -177,23 +192,23 @@ impl GraphState {
 
         // Calcular fuerzas de repulsión entre todos los nodos
         let node_ids: Vec<String> = self.nodes.keys().cloned().collect();
-        
+
         for i in 0..node_ids.len() {
             for j in (i + 1)..node_ids.len() {
                 let id_i = &node_ids[i];
                 let id_j = &node_ids[j];
-                
+
                 let (dx, dy) = {
                     let node_i = &self.nodes[id_i];
                     let node_j = &self.nodes[id_j];
                     (node_j.x - node_i.x, node_j.y - node_i.y)
                 };
-                
+
                 let dist = (dx * dx + dy * dy).sqrt().max(1.0);
                 let force = repulsion / (dist * dist);
                 let fx = (dx / dist) * force;
                 let fy = (dy / dist) * force;
-                
+
                 if let Some(node) = self.nodes.get_mut(id_i) {
                     if !node.fixed {
                         node.vx -= fx;
@@ -225,12 +240,12 @@ impl GraphState {
                 let dist = (dx * dx + dy * dy).sqrt().max(1.0);
                 (dx, dy, dist)
             };
-            
+
             let displacement = dist - spring_length;
             let force = displacement * spring_strength;
             let fx = (dx / dist) * force;
             let fy = (dy / dist) * force;
-            
+
             if let Some(node) = self.nodes.get_mut(&edge.source) {
                 if !node.fixed {
                     node.vx += fx;
@@ -303,6 +318,7 @@ mod imp {
     pub struct GraphView {
         pub state: RefCell<GraphState>,
         pub animation_id: RefCell<Option<glib::SourceId>>,
+        #[allow(clippy::type_complexity)]
         pub on_node_click: RefCell<Option<Arc<dyn Fn(&str) + Send + Sync>>>,
     }
 
@@ -317,7 +333,7 @@ mod imp {
         fn constructed(&self) {
             self.parent_constructed();
             let obj = self.obj();
-            
+
             // Configurar el draw function
             obj.set_draw_func(|widget, cr, width, height| {
                 let graph_view = widget.downcast_ref::<super::GraphView>().unwrap();
@@ -372,7 +388,7 @@ impl GraphView {
         // Gesture para arrastrar nodos
         let drag = gtk::GestureDrag::new();
         drag.set_button(gdk::BUTTON_PRIMARY);
-        
+
         let widget = self.clone();
         drag.connect_drag_begin(move |gesture, x, y| {
             let mut state = widget.state_mut();
@@ -425,10 +441,8 @@ impl GraphView {
         self.add_controller(drag);
 
         // Gesture para zoom con scroll
-        let scroll = gtk::EventControllerScroll::new(
-            gtk::EventControllerScrollFlags::VERTICAL
-        );
-        
+        let scroll = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
+
         let widget = self.clone();
         scroll.connect_scroll(move |_, _, dy| {
             let mut state = widget.state_mut();
@@ -440,11 +454,11 @@ impl GraphView {
         });
 
         self.add_controller(scroll);
-        
+
         // Gesture para doble-clic en nodos
         let click = gtk::GestureClick::new();
         click.set_button(gdk::BUTTON_PRIMARY);
-        
+
         let widget = self.clone();
         click.connect_released(move |gesture, n_press, x, y| {
             if n_press == 2 {
@@ -457,7 +471,7 @@ impl GraphView {
                             // Extraer el nombre de la nota del id "note:123"
                             let note_name = node.label.clone();
                             drop(state);
-                            
+
                             // Llamar al callback
                             if let Some(ref callback) = *widget.imp().on_node_click.borrow() {
                                 callback(&note_name);
@@ -468,10 +482,10 @@ impl GraphView {
                 gesture.set_state(gtk::EventSequenceState::Claimed);
             }
         });
-        
+
         self.add_controller(click);
     }
-    
+
     /// Configurar callback para clic en nodos de notas
     pub fn on_note_click<F: Fn(&str) + Send + Sync + 'static>(&self, callback: F) {
         *self.imp().on_node_click.borrow_mut() = Some(std::sync::Arc::new(callback));
@@ -480,29 +494,38 @@ impl GraphView {
     /// Dibujar el grafo
     fn draw(&self, cr: &gtk::cairo::Context, width: i32, height: i32) {
         let state = self.state();
-        
+
         // Obtener colores del tema GTK usando lookup_color
         let style_context = self.style_context();
-        
+
         // Intentar obtener color de fondo del tema
-        let bg_color = style_context.lookup_color("base")
+        let bg_color = style_context
+            .lookup_color("base")
             .or_else(|| style_context.lookup_color("theme_bg_color"))
             .or_else(|| style_context.lookup_color("window_bg_color"));
-        
+
         // Obtener color de texto para determinar si es tema oscuro
         let fg_color = style_context.color();
         let luminance = fg_color.red() * 0.299 + fg_color.green() * 0.587 + fg_color.blue() * 0.114;
         let is_dark = luminance > 0.5;
-        
+
         // Color de fondo - usar el del tema o fallback
         let (bg_r, bg_g, bg_b) = if let Some(bg) = bg_color {
             (bg.red() as f64, bg.green() as f64, bg.blue() as f64)
         } else if is_dark {
-            (0x1e as f64 / 255.0, 0x1e as f64 / 255.0, 0x2e as f64 / 255.0)
+            (
+                0x1e as f64 / 255.0,
+                0x1e as f64 / 255.0,
+                0x2e as f64 / 255.0,
+            )
         } else {
-            (0xef as f64 / 255.0, 0xf1 as f64 / 255.0, 0xf5 as f64 / 255.0)
+            (
+                0xef as f64 / 255.0,
+                0xf1 as f64 / 255.0,
+                0xf5 as f64 / 255.0,
+            )
         };
-        
+
         // Fondo con color del tema
         cr.set_source_rgb(bg_r, bg_g, bg_b);
         cr.paint().ok();
@@ -512,24 +535,36 @@ impl GraphView {
         cr.scale(state.zoom, state.zoom);
 
         // Color de aristas - obtener del tema o generar basado en fondo
-        let border_color = style_context.lookup_color("border")
+        let border_color = style_context
+            .lookup_color("border")
             .or_else(|| style_context.lookup_color("borders"));
-        
+
         let edge_color = if let Some(border) = border_color {
-            (border.red() as f64, border.green() as f64, border.blue() as f64)
+            (
+                border.red() as f64,
+                border.green() as f64,
+                border.blue() as f64,
+            )
         } else if is_dark {
-            (0x58 as f64 / 255.0, 0x5b as f64 / 255.0, 0x70 as f64 / 255.0)
+            (
+                0x58 as f64 / 255.0,
+                0x5b as f64 / 255.0,
+                0x70 as f64 / 255.0,
+            )
         } else {
-            (0xac as f64 / 255.0, 0xb0 as f64 / 255.0, 0xbe as f64 / 255.0)
+            (
+                0xac as f64 / 255.0,
+                0xb0 as f64 / 255.0,
+                0xbe as f64 / 255.0,
+            )
         };
 
         // Dibujar aristas
         cr.set_line_width(1.5 / state.zoom);
         for edge in &state.edges {
-            if let (Some(source), Some(target)) = (
-                state.nodes.get(&edge.source),
-                state.nodes.get(&edge.target),
-            ) {
+            if let (Some(source), Some(target)) =
+                (state.nodes.get(&edge.source), state.nodes.get(&edge.target))
+            {
                 cr.set_source_rgba(edge_color.0, edge_color.1, edge_color.2, 0.6);
                 cr.move_to(source.x, source.y);
                 cr.line_to(target.x, target.y);
@@ -540,12 +575,12 @@ impl GraphView {
         // Dibujar nodos
         for node in state.nodes.values() {
             let (r, g, b) = node.node_type.color();
-            
+
             // Sombra
             cr.set_source_rgba(0.0, 0.0, 0.0, 0.3);
             cr.arc(node.x + 2.0, node.y + 2.0, node.radius, 0.0, 2.0 * PI);
             cr.fill().ok();
-            
+
             // Nodo
             cr.set_source_rgb(r, g, b);
             cr.arc(node.x, node.y, node.radius, 0.0, 2.0 * PI);
@@ -562,16 +597,16 @@ impl GraphView {
                 fg_color.red() as f64,
                 fg_color.green() as f64,
                 fg_color.blue() as f64,
-                1.0
+                1.0,
             );
             let font_size = 11.0 / state.zoom.sqrt();
             cr.set_font_size(font_size);
-            
+
             // Centrar texto en el nodo
             if let Ok(extents) = cr.text_extents(&node.label) {
                 let text_x = node.x - extents.width() / 2.0;
                 let text_y = node.y + extents.height() / 2.0 - 2.0;
-                
+
                 cr.move_to(text_x, text_y);
                 cr.show_text(&node.label).ok();
             }
@@ -581,16 +616,16 @@ impl GraphView {
     /// Iniciar la animación de simulación
     pub fn start_simulation(&self) {
         let widget = self.clone();
-        
+
         let id = glib::timeout_add_local(std::time::Duration::from_millis(16), move || {
             let width = widget.width() as f64;
             let height = widget.height() as f64;
-            
+
             if width > 0.0 && height > 0.0 {
                 widget.state_mut().simulate_step(width, height);
                 widget.queue_draw();
             }
-            
+
             glib::ControlFlow::Continue
         });
 
@@ -618,16 +653,18 @@ impl GraphView {
             for (key, value) in &record.properties {
                 let value_id = format!("value:{}:{}", key, value);
                 state.add_node(&value_id, value, NodeType::PropertyValue);
-                
+
                 // Arista de nota a valor
                 state.add_edge(&note_id, &value_id, Some(key));
             }
 
             // Conectar valores del mismo grupo entre sí
-            let value_ids: Vec<String> = record.properties.iter()
+            let value_ids: Vec<String> = record
+                .properties
+                .iter()
                 .map(|(k, v)| format!("value:{}:{}", k, v))
                 .collect();
-            
+
             for i in 0..value_ids.len() {
                 for j in (i + 1)..value_ids.len() {
                     state.add_edge(&value_ids[i], &value_ids[j], None);
@@ -649,7 +686,7 @@ impl GraphView {
             // Añadir nodo de nota
             let note_id = format!("note:{}", record.note_id);
             state.add_node(&note_id, &record.note_name, NodeType::Note);
-            
+
             // Conectar nota al centro
             state.add_edge(&note_id, &center_id, Some(key));
 
